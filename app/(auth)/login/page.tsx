@@ -5,11 +5,14 @@ export const metadata: Metadata = {
   title: 'Sign In — EbayToolz',
 }
 
-export default function LoginPage({
+// Next.js 15: searchParams is a Promise and must be awaited
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: { error?: string; redirectTo?: string }
+  searchParams: Promise<{ error?: string; redirectTo?: string }>
 }) {
+  const params = await searchParams
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-50 to-brand-100 px-4">
       <div className="w-full max-w-md">
@@ -23,14 +26,14 @@ export default function LoginPage({
         </div>
 
         {/* Auth error from callback */}
-        {searchParams.error === 'auth_callback_failed' && (
+        {params.error === 'auth_callback_failed' && (
           <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm text-center">
             Authentication failed. Please try again.
           </div>
         )}
 
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
-          <LoginForm redirectTo={searchParams.redirectTo} />
+          <LoginForm redirectTo={params.redirectTo} />
         </div>
       </div>
     </div>
