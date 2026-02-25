@@ -1,8 +1,13 @@
 /**
- * TypeScript types auto-derived from the Supabase schema.
- * Update these whenever you run new migrations.
+ * TypeScript types for the Supabase schema.
  *
- * TIP: You can auto-generate these from Supabase CLI:
+ * The Database type must exactly match the shape expected by
+ * @supabase/supabase-js v2.47+ (PostgrestVersion "12"):
+ *   - Each table entry needs a Relationships array
+ *   - Unused maps use `{ [_ in never]: never }` not `Record<string, never>`
+ *   - Insert types mark auto-generated columns (id, created_at) as optional
+ *
+ * TIP: Auto-regenerate from Supabase CLI after schema changes:
  *   npx supabase gen types typescript --project-id <ref> > lib/types/database.ts
  */
 
@@ -100,27 +105,97 @@ export interface StaleItem {
 }
 
 // ─── Supabase Database type map (for createClient<Database>()) ────────────────
+// Structured to match @supabase/supabase-js v2.47+ expectations.
+// Key requirements vs older hand-written types:
+//   1. Explicit Insert/Update shapes (no Omit<>/Partial<> shortcuts) so the
+//      compiler can narrow insert() argument types correctly.
+//   2. Every table needs a `Relationships: []` entry.
+//   3. Top-level empty maps must use `{ [_ in never]: never }`.
 export type Database = {
   public: {
     Tables: {
       ebay_transactions: {
         Row: EbayTransaction
-        Insert: Omit<EbayTransaction, 'id' | 'created_at' | 'updated_at'>
-        Update: Partial<Omit<EbayTransaction, 'id' | 'user_id' | 'created_at'>>
+        Insert: {
+          id?: string
+          user_id: string
+          date?: string | null
+          order_number: string
+          total?: number | null
+          net?: number | null
+          type: 'sale' | 'refund'
+          status?: string | null
+          buyer?: string | null
+          shipping_address?: string | null
+          transactions_json?: TransactionLineItem[]
+          corresponding_amazon_order?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          date?: string | null
+          order_number?: string
+          total?: number | null
+          net?: number | null
+          type?: 'sale' | 'refund'
+          status?: string | null
+          buyer?: string | null
+          shipping_address?: string | null
+          transactions_json?: TransactionLineItem[]
+          corresponding_amazon_order?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       amazon_transactions: {
         Row: AmazonTransaction
-        Insert: Omit<AmazonTransaction, 'id' | 'created_at' | 'updated_at'>
-        Update: Partial<Omit<AmazonTransaction, 'id' | 'user_id' | 'created_at'>>
+        Insert: {
+          id?: string
+          user_id: string
+          date?: string | null
+          order_number: string
+          total?: number | null
+          cost?: number | null
+          type: 'complete' | 'refund' | 'cancel'
+          status?: string | null
+          shipping_address?: string | null
+          tracking_url?: string | null
+          corresponding_ebay_order?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          date?: string | null
+          order_number?: string
+          total?: number | null
+          cost?: number | null
+          type?: 'complete' | 'refund' | 'cancel'
+          status?: string | null
+          shipping_address?: string | null
+          tracking_url?: string | null
+          corresponding_ebay_order?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       user_settings: {
         Row: UserSettings
-        Insert: Pick<UserSettings, 'user_id'> & Partial<UserSettings>
-        Update: Partial<Omit<UserSettings, 'user_id' | 'created_at'>>
+        Insert: {
+          user_id: string
+          apply_amazon_5pct_adjustment?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          apply_amazon_5pct_adjustment?: boolean
+          updated_at?: string
+        }
+        Relationships: []
       }
     }
-    Views: Record<string, never>
-    Functions: Record<string, never>
-    Enums: Record<string, never>
+    Views: { [_ in never]: never }
+    Functions: { [_ in never]: never }
+    Enums: { [_ in never]: never }
+    CompositeTypes: { [_ in never]: never }
   }
 }

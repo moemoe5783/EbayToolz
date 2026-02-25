@@ -12,7 +12,7 @@ interface LoginFormProps {
   redirectTo?: string
 }
 
-export default function LoginForm({ redirectTo: _redirectTo }: LoginFormProps) {
+export default function LoginForm(_props: LoginFormProps) {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
 
   const [signInState, signInAction, signInPending] = useActionState(signIn, {})
