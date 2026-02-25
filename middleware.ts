@@ -5,7 +5,7 @@
  * 1. Refresh the Supabase session on every request (required by @supabase/ssr).
  * 2. Redirect unauthenticated users away from protected routes.
  */
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // Routes that don't require authentication
@@ -25,7 +25,7 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll()
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
           // Write updated cookies back to the request and response
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
