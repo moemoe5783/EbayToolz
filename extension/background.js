@@ -147,6 +147,36 @@ async function handleAutoSave(orderData) {
 
   const currentType = orderData.type || 'complete'
 
+  // Refunds are separate transactions — store as "{orderNumber}-refund" so the
+  // original "complete" record stays intact and both appear in the DB.
+  if (currentType === 'refund') {
+    const refundKey = `${orderNumber}-refund`
+    if (await isAlreadySynced(refundKey)) return { status: 'duplicate' }
+
+    const refundPayload = {
+      order_number: refundKey,
+      date: orderData.date || new Date().toISOString(),
+      total: 0,   // refund amount is not reliably the same as the order total
+      cost: 0,
+      type: 'refund',
+      status: orderData.status || null,
+      shipping_address: orderData.shipping_address || null,
+      tracking_url: orderData.tracking_url || null,
+      corresponding_ebay_order: null,
+    }
+
+    const { ok, status, data } = await postTransaction(token, refundPayload)
+    if (ok) {
+      await markSynced(refundKey, 'refund')
+      return { status: 'refund_saved', data }
+    }
+    if (status === 409) {
+      await markSynced(refundKey, 'refund')
+      return { status: 'duplicate' }
+    }
+    return { status: 'error', error: data?.error || 'Unknown error' }
+  }
+
   if (await isAlreadySynced(orderNumber)) {
     // If the order is now canceled but was saved as something else, update the DB row
     if (currentType === 'cancel' && (await getStoredType(orderNumber)) !== 'cancel') {

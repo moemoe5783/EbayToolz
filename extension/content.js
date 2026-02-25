@@ -226,6 +226,8 @@
       showToast('Already saved', `Order ${orderData.order_number}`, 'info', 4000)
     } else if (response.status === 'updated') {
       showToast('Order updated', `Marked as canceled, cost reset to $0`, 'info', 5000)
+    } else if (response.status === 'refund_saved') {
+      showToast('Return saved', `Order ${orderData.order_number}`, 'success')
     } else if (response.status === 'ok') {
       showToast('Saved to EbayToolz', `Order ${orderData.order_number}`, 'success')
     } else {
