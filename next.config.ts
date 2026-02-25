@@ -1,8 +1,9 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
+  // Disable anonymous usage telemetry
+  // (alternatively set NEXT_TELEMETRY_DISABLED=1 in env vars)
   experimental: {
-    // Server Actions are stable in Next.js 14, but enabling enhanced features
     serverActions: {
       bodySizeLimit: '2mb',
     },
