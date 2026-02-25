@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EbayToolz</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- ── Loading ─────────────────────────────────────────────── -->
+    <div id="state-loading" class="state center">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- ── Login ──────────────────────────────────────────────── -->
+    <div id="state-login" class="state hidden">
+      <div class="header">
+        <div class="wordmark">EbayToolz</div>
+        <div class="wordmark-sub">Amazon Scraper</div>
+      </div>
+      <form id="login-form" class="form">
+        <div class="field">
+          <label for="email">Email</label>
+          <input
+            type="email"
+            id="email"
+            placeholder="you@example.com"
+            autocomplete="email"
+            required
+          />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input
+            type="password"
+            id="password"
+            placeholder="••••••••"
+            autocomplete="current-password"
+            required
+          />
+        </div>
+        <div id="login-error" class="error-msg hidden"></div>
+        <button type="submit" id="login-btn" class="btn btn-primary full-width">
+          Sign In
+        </button>
+      </form>
+    </div>
+
+    <!-- ── Not on Amazon ──────────────────────────────────────── -->
+    <div id="state-not-amazon" class="state hidden">
+      <div class="header compact">
+        <div class="wordmark-small">EbayToolz</div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon">🛒</div>
+        <p>Navigate to an Amazon <strong>order page</strong> or <strong>product page</strong> to get started.</p>
+        <a id="open-app-link" href="#" class="btn btn-secondary" target="_blank">
+          Open EbayToolz
+        </a>
+      </div>
+      <div class="footer">
+        <span id="user-email-na" class="user-email"></span>
+        <button id="signout-btn-na" class="btn btn-ghost">Sign out</button>
+      </div>
+    </div>
+
+    <!-- ── Amazon Order Form ───────────────────────────────────── -->
+    <div id="state-order" class="state hidden">
+      <div class="header compact">
+        <div class="wordmark-small">EbayToolz</div>
+        <span class="badge">Amazon Order</span>
+      </div>
+      <form id="order-form" class="form scrollable">
+        <div class="field">
+          <label for="order_number">Order Number <span class="required">*</span></label>
+          <input type="text" id="order_number" placeholder="123-4567890-1234567" />
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="date">Date</label>
+            <input type="date" id="date" />
+          </div>
+          <div class="field">
+            <label for="type">Type</label>
+            <select id="type">
+              <option value="complete">Complete</option>
+              <option value="refund">Refund</option>
+              <option value="cancel">Cancel</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="total">Total ($)</label>
+            <input type="number" id="total" step="0.01" min="0" placeholder="0.00" />
+          </div>
+          <div class="field">
+            <label for="cost">Cost ($)</label>
+            <input type="number" id="cost" step="0.01" min="0" placeholder="0.00" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="status">Status</label>
+          <input type="text" id="status" placeholder="Delivered, Shipped…" />
+        </div>
+        <div class="field">
+          <label for="shipping_address">Shipping Address</label>
+          <textarea id="shipping_address" rows="2" placeholder="123 Main St, City, State 12345"></textarea>
+        </div>
+        <div class="field">
+          <label for="tracking_url">Tracking URL</label>
+          <input type="url" id="tracking_url" placeholder="https://…" />
+        </div>
+        <div class="field">
+          <label for="ebay_order">eBay Order # <span class="muted">(optional)</span></label>
+          <input type="text" id="ebay_order" placeholder="Link to matching eBay order" />
+        </div>
+        <div id="order-error" class="error-msg hidden"></div>
+        <button type="submit" id="save-btn" class="btn btn-primary full-width">
+          Save to EbayToolz
+        </button>
+      </form>
+      <div class="footer">
+        <span id="user-email-order" class="user-email"></span>
+        <button id="signout-btn-order" class="btn btn-ghost">Sign out</button>
+      </div>
+    </div>
+
+    <!-- ── Product Info ────────────────────────────────────────── -->
+    <div id="state-product" class="state hidden">
+      <div class="header compact">
+        <div class="wordmark-small">EbayToolz</div>
+        <span class="badge">Product Page</span>
+      </div>
+      <div class="product-info form">
+        <div class="info-row">
+          <span class="info-label">ASIN</span>
+          <span id="product-asin" class="info-value mono"></span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Title</span>
+          <span id="product-title" class="info-value"></span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Price</span>
+          <span id="product-price" class="info-value"></span>
+        </div>
+        <p class="hint">Go to an Amazon <strong>order page</strong> to log a transaction.</p>
+        <button id="copy-asin-btn" class="btn btn-secondary full-width">
+          Copy ASIN
+        </button>
+      </div>
+      <div class="footer">
+        <span id="user-email-product" class="user-email"></span>
+        <button id="signout-btn-product" class="btn btn-ghost">Sign out</button>
+      </div>
+    </div>
+
+    <!-- ── Success ─────────────────────────────────────────────── -->
+    <div id="state-success" class="state hidden center">
+      <div class="success-check">✓</div>
+      <h3>Transaction Saved!</h3>
+      <p>Your Amazon order has been added to EbayToolz.</p>
+      <div class="btn-group">
+        <a id="view-link" href="#" class="btn btn-primary" target="_blank">
+          View Transactions
+        </a>
+        <button id="back-btn" class="btn btn-secondary">Back</button>
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

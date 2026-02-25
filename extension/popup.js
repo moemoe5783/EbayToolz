@@ -1,0 +1,290 @@
+// EbayToolz Amazon Scraper — Popup Script
+// config.js is loaded first via <script src="config.js"> in popup.html.
+// SUPABASE_URL, SUPABASE_ANON_KEY, APP_URL, API_URL are therefore available.
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
+const $ = (id) => document.getElementById(id)
+
+function showState(name) {
+  const ids = ['loading', 'login', 'not-amazon', 'order', 'product', 'success']
+  ids.forEach((id) => {
+    const el = $(`state-${id}`)
+    if (el) el.classList.toggle('hidden', id !== name)
+  })
+}
+
+function showError(elId, msg) {
+  const el = $(elId)
+  if (!el) return
+  el.textContent = msg
+  el.classList.remove('hidden')
+}
+
+function hideError(elId) {
+  const el = $(elId)
+  if (el) el.classList.add('hidden')
+}
+
+function setLoading(btn, loading, label = 'Save to EbayToolz') {
+  btn.disabled = loading
+  btn.textContent = loading ? 'Saving…' : label
+}
+
+// ─── Auth helpers ──────────────────────────────────────────────────────────
+
+async function getValidToken() {
+  const stored = await chrome.storage.local.get(['access_token', 'expires_at'])
+  if (!stored.access_token) return null
+
+  // Refresh if within 5 minutes of expiry
+  if (stored.expires_at && Date.now() > stored.expires_at - 5 * 60 * 1000) {
+    const result = await chrome.runtime.sendMessage({ type: 'REFRESH_TOKEN' })
+    if (!result?.success) {
+      await chrome.storage.local.clear()
+      return null
+    }
+    return result.access_token
+  }
+
+  return stored.access_token
+}
+
+async function signIn(email, password) {
+  const res = await fetch(
+    `${SUPABASE_URL}/auth/v1/token?grant_type=password`,
+    {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    }
+  )
+
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data.error_description || data.msg || 'Sign-in failed')
+  }
+
+  await chrome.storage.local.set({
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: Date.now() + data.expires_in * 1000,
+    user_email: data.user?.email ?? email,
+  })
+
+  return data
+}
+
+async function signOut() {
+  const token = await getValidToken()
+  if (token) {
+    fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+    }).catch(() => {})
+  }
+  await chrome.storage.local.clear()
+  showState('login')
+}
+
+// ─── Scraping ──────────────────────────────────────────────────────────────
+
+async function scrapeCurrentTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (!tab?.url?.match(/amazon\.(com|co\.uk|ca)/)) return null
+
+  try {
+    const response = await chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_PAGE' })
+    return response
+  } catch {
+    // Content script not yet injected (extension just installed, or page loaded before install)
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] })
+    return await chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_PAGE' })
+  }
+}
+
+// ─── UI population ─────────────────────────────────────────────────────────
+
+function isoToDateInput(iso) {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toISOString().slice(0, 10)
+  } catch {
+    return ''
+  }
+}
+
+function populateOrderForm(data) {
+  $('order_number').value = data.order_number || ''
+  $('date').value = isoToDateInput(data.date)
+  $('total').value = data.total > 0 ? data.total.toFixed(2) : ''
+  $('cost').value = data.cost > 0 ? data.cost.toFixed(2) : ''
+  $('type').value = data.type || 'complete'
+  $('status').value = data.status || ''
+  $('shipping_address').value = data.shipping_address || ''
+  $('tracking_url').value = data.tracking_url || ''
+  $('ebay_order').value = ''
+}
+
+function populateProductInfo(data) {
+  $('product-asin').textContent = data.asin || '—'
+  $('product-title').textContent = data.title || '—'
+  $('product-price').textContent = data.price > 0 ? `$${data.price.toFixed(2)}` : '—'
+}
+
+// ─── Save transaction ──────────────────────────────────────────────────────
+
+async function saveTransaction(token) {
+  const trackingVal = $('tracking_url').value.trim()
+  const ebayVal = $('ebay_order').value.trim()
+  const dateVal = $('date').value
+
+  const payload = {
+    order_number: $('order_number').value.trim(),
+    date: dateVal ? new Date(dateVal).toISOString() : new Date().toISOString(),
+    total: parseFloat($('total').value) || 0,
+    cost: parseFloat($('cost').value) || 0,
+    type: $('type').value,
+    status: $('status').value.trim() || null,
+    shipping_address: $('shipping_address').value.trim() || null,
+    tracking_url: trackingVal || null,
+    corresponding_ebay_order: ebayVal || null,
+  }
+
+  if (!payload.order_number) {
+    throw new Error('Order number is required.')
+  }
+
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await res.json()
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to save transaction.')
+  }
+
+  return data
+}
+
+// ─── Sign-out wiring ───────────────────────────────────────────────────────
+
+function wireSignOutButtons() {
+  ;['na', 'order', 'product'].forEach((suffix) => {
+    const btn = $(`signout-btn-${suffix}`)
+    if (btn) btn.addEventListener('click', signOut)
+  })
+}
+
+function setUserEmail(email) {
+  ;['na', 'order', 'product'].forEach((suffix) => {
+    const el = $(`user-email-${suffix}`)
+    if (el) el.textContent = email
+  })
+}
+
+// ─── Boot ──────────────────────────────────────────────────────────────────
+
+async function boot() {
+  showState('loading')
+  wireSignOutButtons()
+
+  // Set up "Open EbayToolz" links
+  $('open-app-link').href = APP_URL
+  $('view-link').href = `${APP_URL}/transactions`
+
+  // Copy ASIN button
+  $('copy-asin-btn').addEventListener('click', () => {
+    const asin = $('product-asin').textContent
+    if (asin && asin !== '—') navigator.clipboard.writeText(asin)
+  })
+
+  // Back button (success → order form)
+  $('back-btn').addEventListener('click', () => showState('order'))
+
+  // Login form
+  $('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    hideError('login-error')
+    const btn = $('login-btn')
+    btn.disabled = true
+    btn.textContent = 'Signing in…'
+
+    try {
+      await signIn($('email').value.trim(), $('password').value)
+      await loadMain()
+    } catch (err) {
+      showError('login-error', err.message)
+    } finally {
+      btn.disabled = false
+      btn.textContent = 'Sign In'
+    }
+  })
+
+  // Order save form
+  $('order-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    hideError('order-error')
+    const btn = $('save-btn')
+    setLoading(btn, true)
+
+    try {
+      const token = await getValidToken()
+      if (!token) { signOut(); return }
+      await saveTransaction(token)
+      showState('success')
+    } catch (err) {
+      showError('order-error', err.message)
+    } finally {
+      setLoading(btn, false)
+    }
+  })
+
+  // Check auth
+  const token = await getValidToken()
+  if (!token) {
+    showState('login')
+    return
+  }
+
+  await loadMain()
+}
+
+async function loadMain() {
+  showState('loading')
+
+  const stored = await chrome.storage.local.get(['user_email'])
+  setUserEmail(stored.user_email || '')
+
+  let scraped = null
+  try {
+    scraped = await scrapeCurrentTab()
+  } catch {
+    scraped = null
+  }
+
+  if (!scraped || scraped.page_type === 'other' || !scraped.page_type) {
+    showState('not-amazon')
+    return
+  }
+
+  if (scraped.page_type === 'order') {
+    populateOrderForm(scraped)
+    showState('order')
+  } else if (scraped.page_type === 'product') {
+    populateProductInfo(scraped)
+    showState('product')
+  } else {
+    showState('not-amazon')
+  }
+}
+
+document.addEventListener('DOMContentLoaded', boot)
