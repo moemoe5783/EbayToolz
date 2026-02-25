@@ -120,6 +120,26 @@ async function patchTransaction(token, orderNumber, fields) {
   return supabaseRequest(token, 'PATCH', qs, fields)
 }
 
+// Check DB for any existing refund row for this order, regardless of which naming
+// convention was used (old: orderNumber directly; new: orderNumber-refund).
+async function refundExistsInDB(token, orderNumber) {
+  const refundKey = `${orderNumber}-refund`
+  const url =
+    `${SUPABASE_URL}/rest/v1/amazon_transactions` +
+    `?or=(order_number.eq.${encodeURIComponent(orderNumber)},order_number.eq.${encodeURIComponent(refundKey)})` +
+    `&type=eq.refund&select=order_number&limit=1`
+  try {
+    const res = await fetch(url, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return false
+    const data = await res.json()
+    return Array.isArray(data) && data.length > 0
+  } catch {
+    return false
+  }
+}
+
 // ── Message handler ───────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -151,7 +171,16 @@ async function handleAutoSave(orderData) {
   // original "complete" record stays intact and both appear in the DB.
   if (currentType === 'refund') {
     const refundKey = `${orderNumber}-refund`
+
+    // Fast path: local memory already knows about this refund
     if (await isAlreadySynced(refundKey)) return { status: 'duplicate' }
+
+    // Slow path: DB check — catches cleared storage and records saved under the old
+    // naming convention (orderNumber directly, before the -refund suffix was introduced)
+    if (await refundExistsInDB(token, orderNumber)) {
+      await markSynced(refundKey, 'refund')
+      return { status: 'duplicate' }
+    }
 
     const refundPayload = {
       order_number: refundKey,
