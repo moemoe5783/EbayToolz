@@ -46,9 +46,9 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
-  const isPublicRoute = PUBLIC_ROUTES.some((route) =>
-    pathname.startsWith(route)
-  )
+  const isPublicRoute =
+    PUBLIC_ROUTES.some((route) => pathname.startsWith(route)) ||
+    pathname.startsWith('/api/') // API routes authenticate via Bearer token, not cookies
 
   // Redirect unauthenticated users to /login
   if (!user && !isPublicRoute) {
