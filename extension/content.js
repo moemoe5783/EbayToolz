@@ -224,6 +224,8 @@
       showToast('EbayToolz', 'Sign in via the extension popup first.', 'info', 6000)
     } else if (response.status === 'duplicate') {
       showToast('Already saved', `Order ${orderData.order_number}`, 'info', 4000)
+    } else if (response.status === 'updated') {
+      showToast('Order updated', `Marked as canceled, cost reset to $0`, 'info', 5000)
     } else if (response.status === 'ok') {
       showToast('Saved to EbayToolz', `Order ${orderData.order_number}`, 'success')
     } else {

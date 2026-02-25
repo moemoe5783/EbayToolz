@@ -49,21 +49,31 @@ async function doRefresh(refresh_token) {
   }
 }
 
-// ── Duplicate tracking ────────────────────────────────────────────────────
+// ── Duplicate / type tracking ─────────────────────────────────────────────
+// synced_orders        — array of order numbers we've ever saved
+// synced_orders_type   — { [orderNumber]: 'complete' | 'cancel' | 'refund' }
 
 async function isAlreadySynced(orderNumber) {
   const { synced_orders = [] } = await chrome.storage.local.get(['synced_orders'])
   return synced_orders.includes(orderNumber)
 }
 
-async function markSynced(orderNumber) {
-  const { synced_orders = [] } = await chrome.storage.local.get(['synced_orders'])
+async function getStoredType(orderNumber) {
+  const { synced_orders_type = {} } = await chrome.storage.local.get(['synced_orders_type'])
+  return synced_orders_type[orderNumber] || null
+}
+
+async function markSynced(orderNumber, type = 'complete') {
+  const { synced_orders = [], synced_orders_type = {} } =
+    await chrome.storage.local.get(['synced_orders', 'synced_orders_type'])
   if (!synced_orders.includes(orderNumber)) {
     synced_orders.push(orderNumber)
-    // Keep the last 500 order numbers to avoid unbounded growth
-    const trimmed = synced_orders.slice(-500)
-    await chrome.storage.local.set({ synced_orders: trimmed })
   }
+  synced_orders_type[orderNumber] = type
+  await chrome.storage.local.set({
+    synced_orders: synced_orders.slice(-500),
+    synced_orders_type,
+  })
 }
 
 // ── Supabase REST API — no Next.js middleware involved ────────────────────
@@ -78,28 +88,36 @@ function getUserIdFromJWT(token) {
   }
 }
 
-async function postTransaction(token, payload) {
+async function supabaseRequest(token, method, path, body) {
   const userId = getUserIdFromJWT(token)
-
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/amazon_transactions`, {
-    method: 'POST',
+  const url = `${SUPABASE_URL}/rest/v1/amazon_transactions${path.replace('{uid}', userId)}`
+  const res = await fetch(url, {
+    method,
     headers: {
       apikey: SUPABASE_ANON_KEY,
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      Prefer: 'return=representation', // return the inserted row
+      Prefer: 'return=representation',
     },
-    body: JSON.stringify({ ...payload, user_id: userId }),
+    body: JSON.stringify(body),
   })
-
   const ct = res.headers.get('content-type') || ''
   if (!ct.includes('application/json')) {
     return { ok: false, status: res.status, data: { error: `Unexpected response (${res.status})` } }
   }
-
   const data = await res.json()
-  // PostgREST returns an array on insert
   return { ok: res.ok, status: res.status, data: Array.isArray(data) ? data[0] : data }
+}
+
+async function postTransaction(token, payload) {
+  const userId = getUserIdFromJWT(token)
+  return supabaseRequest(token, 'POST', '', { ...payload, user_id: userId })
+}
+
+async function patchTransaction(token, orderNumber, fields) {
+  const userId = getUserIdFromJWT(token)
+  const qs = `?order_number=eq.${encodeURIComponent(orderNumber)}&user_id=eq.${userId}`
+  return supabaseRequest(token, 'PATCH', qs, fields)
 }
 
 // ── Message handler ───────────────────────────────────────────────────────
@@ -127,8 +145,22 @@ async function handleAutoSave(orderData) {
   const orderNumber = orderData.order_number
   if (!orderNumber) return { status: 'error', error: 'No order number found on page' }
 
-  // Skip duplicates silently-ish (toast will show "Already saved")
+  const currentType = orderData.type || 'complete'
+
   if (await isAlreadySynced(orderNumber)) {
+    // If the order is now canceled but was saved as something else, update the DB row
+    if (currentType === 'cancel' && (await getStoredType(orderNumber)) !== 'cancel') {
+      const { ok, data } = await patchTransaction(token, orderNumber, {
+        status: orderData.status || null,
+        type: 'cancel',
+        cost: 0,
+      })
+      if (ok) {
+        await markSynced(orderNumber, 'cancel')
+        return { status: 'updated' }
+      }
+      return { status: 'error', error: data?.message || 'Failed to update order' }
+    }
     return { status: 'duplicate' }
   }
 
@@ -137,7 +169,7 @@ async function handleAutoSave(orderData) {
     date: orderData.date || new Date().toISOString(),
     total: orderData.total || 0,
     cost: orderData.cost || 0,
-    type: orderData.type || 'complete',
+    type: currentType,
     status: orderData.status || null,
     shipping_address: orderData.shipping_address || null,
     tracking_url: orderData.tracking_url || null,
@@ -147,13 +179,13 @@ async function handleAutoSave(orderData) {
   const { ok, status, data } = await postTransaction(token, payload)
 
   if (ok) {
-    await markSynced(orderNumber)
+    await markSynced(orderNumber, currentType)
     return { status: 'ok', data }
   }
 
   // Server already has it (409) — mark locally so we don't retry
   if (status === 409) {
-    await markSynced(orderNumber)
+    await markSynced(orderNumber, currentType)
     return { status: 'duplicate' }
   }
 
