@@ -8,11 +8,8 @@ import { useActionState, useState } from 'react'
 import { signIn, signUp } from '@/lib/actions/auth'
 import { Loader2 } from 'lucide-react'
 
-interface LoginFormProps {
-  redirectTo?: string
-}
 
-export default function LoginForm(_props: LoginFormProps) {
+export default function LoginForm() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
 
   const [signInState, signInAction, signInPending] = useActionState(signIn, {})

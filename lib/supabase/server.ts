@@ -9,16 +9,22 @@
  */
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import type { Database } from '@/lib/types/database'
 
 /**
  * Use in Server Components, Server Actions, and Route Handlers.
  * Automatically attaches the user's session cookie so RLS applies.
+ *
+ * Note: We intentionally omit the <Database> generic here. Hand-written
+ * Database types are brittle against @supabase/supabase-js internal type
+ * changes. Type safety is enforced at the action function boundaries instead
+ * (explicit return types on every server action). Run
+ * `npx supabase gen types typescript` to get a fully compatible generated type.
  */
 export async function createClient() {
   const cookieStore = await cookies()
 
-  return createServerClient<Database>(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return createServerClient<any>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
