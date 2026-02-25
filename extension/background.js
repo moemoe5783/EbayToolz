@@ -66,30 +66,40 @@ async function markSynced(orderNumber) {
   }
 }
 
-// ── API call ──────────────────────────────────────────────────────────────
+// ── Supabase REST API — no Next.js middleware involved ────────────────────
+
+// Decode the `sub` claim from the JWT to get the Supabase user ID.
+function getUserIdFromJWT(token) {
+  try {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    return JSON.parse(atob(b64)).sub || null
+  } catch {
+    return null
+  }
+}
 
 async function postTransaction(token, payload) {
-  const res = await fetch(API_URL, {
+  const userId = getUserIdFromJWT(token)
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/amazon_transactions`, {
     method: 'POST',
     headers: {
+      apikey: SUPABASE_ANON_KEY,
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      Prefer: 'return=representation', // return the inserted row
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, user_id: userId }),
   })
 
   const ct = res.headers.get('content-type') || ''
   if (!ct.includes('application/json')) {
-    // The server returned HTML (e.g. a redirect to /login) — surface a clear error
-    return {
-      ok: false,
-      status: res.status,
-      data: { error: `Server returned HTML (${res.status}) instead of JSON. Try reloading the extension or check the API URL in config.js.` },
-    }
+    return { ok: false, status: res.status, data: { error: `Unexpected response (${res.status})` } }
   }
 
   const data = await res.json()
-  return { ok: res.ok, status: res.status, data }
+  // PostgREST returns an array on insert
+  return { ok: res.ok, status: res.status, data: Array.isArray(data) ? data[0] : data }
 }
 
 // ── Message handler ───────────────────────────────────────────────────────

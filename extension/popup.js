@@ -135,15 +135,30 @@ function populateProductInfo(data) {
   $('product-price').textContent = data.price > 0 ? `$${data.price.toFixed(2)}` : '—'
 }
 
+// ─── Supabase REST helper ──────────────────────────────────────────────────
+
+function getUserIdFromJWT(token) {
+  try {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    return JSON.parse(atob(b64)).sub || null
+  } catch {
+    return null
+  }
+}
+
 // ─── Save transaction ──────────────────────────────────────────────────────
 
 async function saveTransaction(token) {
   const trackingVal = $('tracking_url').value.trim()
   const ebayVal = $('ebay_order').value.trim()
   const dateVal = $('date').value
+  const orderNumber = $('order_number').value.trim()
+
+  if (!orderNumber) throw new Error('Order number is required.')
 
   const payload = {
-    order_number: $('order_number').value.trim(),
+    user_id: getUserIdFromJWT(token),
+    order_number: orderNumber,
     date: dateVal ? new Date(dateVal).toISOString() : new Date().toISOString(),
     total: parseFloat($('total').value) || 0,
     cost: parseFloat($('cost').value) || 0,
@@ -154,25 +169,24 @@ async function saveTransaction(token) {
     corresponding_ebay_order: ebayVal || null,
   }
 
-  if (!payload.order_number) {
-    throw new Error('Order number is required.')
-  }
-
-  const res = await fetch(API_URL, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/amazon_transactions`, {
     method: 'POST',
     headers: {
+      apikey: SUPABASE_ANON_KEY,
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      Prefer: 'return=representation',
     },
     body: JSON.stringify(payload),
   })
 
   const data = await res.json()
   if (!res.ok) {
-    throw new Error(data.error || 'Failed to save transaction.')
+    const isDupe = res.status === 409 || data?.code === '23505'
+    throw new Error(isDupe ? 'This order number already exists.' : (data?.message || 'Failed to save transaction.'))
   }
 
-  return data
+  return Array.isArray(data) ? data[0] : data
 }
 
 // ─── Sign-out wiring ───────────────────────────────────────────────────────
