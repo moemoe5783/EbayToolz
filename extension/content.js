@@ -144,37 +144,37 @@
     s.textContent = `
       #ebt-toast {
         position: fixed;
-        bottom: 24px;
-        right: 24px;
+        top: 8px;
+        right: 12px;
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 13px 18px;
+        padding: 11px 16px;
         border-radius: 10px;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 500;
         color: #fff;
         z-index: 2147483647;
-        box-shadow: 0 6px 24px rgba(0,0,0,0.35);
-        max-width: 340px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        max-width: 320px;
         line-height: 1.4;
-        animation: ebt-in 0.25s cubic-bezier(0.34,1.56,0.64,1);
-        transition: opacity 0.3s, transform 0.3s;
+        animation: ebt-in 0.2s cubic-bezier(0.34,1.4,0.64,1);
+        transition: opacity 0.25s, transform 0.25s;
       }
       #ebt-toast.ebt-out {
         opacity: 0;
-        transform: translateY(8px);
+        transform: translateY(-6px);
       }
       #ebt-toast.ebt-success { background: #15803d; border: 1px solid #16a34a; }
       #ebt-toast.ebt-error   { background: #991b1b; border: 1px solid #dc2626; }
       #ebt-toast.ebt-info    { background: #1e3a8a; border: 1px solid #2563eb; }
-      #ebt-toast .ebt-icon   { font-size: 18px; flex-shrink: 0; }
+      #ebt-toast .ebt-icon   { font-size: 16px; flex-shrink: 0; }
       #ebt-toast .ebt-body   { display: flex; flex-direction: column; gap: 1px; }
       #ebt-toast .ebt-title  { font-weight: 600; }
-      #ebt-toast .ebt-sub    { font-size: 12px; opacity: 0.85; }
+      #ebt-toast .ebt-sub    { font-size: 11px; opacity: 0.85; }
       @keyframes ebt-in {
-        from { opacity: 0; transform: translateY(16px) scale(0.96); }
+        from { opacity: 0; transform: translateY(-10px) scale(0.96); }
         to   { opacity: 1; transform: translateY(0) scale(1); }
       }
     `

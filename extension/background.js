@@ -77,6 +77,17 @@ async function postTransaction(token, payload) {
     },
     body: JSON.stringify(payload),
   })
+
+  const ct = res.headers.get('content-type') || ''
+  if (!ct.includes('application/json')) {
+    // The server returned HTML (e.g. a redirect to /login) — surface a clear error
+    return {
+      ok: false,
+      status: res.status,
+      data: { error: `Server returned HTML (${res.status}) instead of JSON. Try reloading the extension or check the API URL in config.js.` },
+    }
+  }
+
   const data = await res.json()
   return { ok: res.ok, status: res.status, data }
 }
