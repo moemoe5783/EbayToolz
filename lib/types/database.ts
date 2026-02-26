@@ -77,6 +77,22 @@ export interface BusinessExpense {
   updated_at: string
 }
 
+// ─── eBay OAuth Token ─────────────────────────────────────────────────────────
+// Stored in ebay_oauth_tokens which has RLS enabled with NO policies.
+// Only accessible via the service_role client server-side.
+export interface EbayOAuthToken {
+  user_id: string
+  access_token: string          // AES-256-GCM encrypted
+  refresh_token: string         // AES-256-GCM encrypted
+  expires_at: string
+  refresh_token_expires_at: string | null
+  scope: string | null
+  ebay_user_id: string | null
+  last_synced_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 // ─── User Settings ────────────────────────────────────────────────────────────
 export interface UserSettings {
   user_id: string
@@ -236,6 +252,32 @@ export type Database = {
           category?: ExpenseCategory
           notes?: string | null
           amazon_order_number?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ebay_oauth_tokens: {
+        Row: EbayOAuthToken
+        Insert: {
+          user_id: string
+          access_token: string
+          refresh_token: string
+          expires_at: string
+          refresh_token_expires_at?: string | null
+          scope?: string | null
+          ebay_user_id?: string | null
+          last_synced_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          refresh_token?: string
+          expires_at?: string
+          refresh_token_expires_at?: string | null
+          scope?: string | null
+          ebay_user_id?: string | null
+          last_synced_at?: string | null
           updated_at?: string
         }
         Relationships: []

@@ -1,13 +1,25 @@
 import type { Metadata } from 'next'
 import { getUserSettings } from '@/lib/actions/settings'
+import { createClient } from '@/lib/supabase/server'
+import { isEbayConnected, getEbayLastSynced } from '@/lib/ebay/tokens'
 import SettingsForm from '@/components/settings/settings-form'
+import EbaySettings from '@/components/settings/ebay-settings'
 
 export const metadata: Metadata = {
   title: 'Settings — EbayToolz',
 }
 
 export default async function SettingsPage() {
-  const { data: settings, error } = await getUserSettings()
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const [{ data: settings, error }, ebayConnected, ebayLastSynced] = await Promise.all([
+    getUserSettings(),
+    user ? isEbayConnected(user.id) : Promise.resolve(false),
+    user ? getEbayLastSynced(user.id) : Promise.resolve(null),
+  ])
 
   return (
     <div>
@@ -18,9 +30,9 @@ export default async function SettingsPage() {
         </p>
       </div>
 
-      <div className="max-w-2xl">
+      <div className="max-w-2xl space-y-6">
         {error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
             Failed to load settings: {error}
           </div>
         )}
@@ -35,6 +47,8 @@ export default async function SettingsPage() {
             }
           }
         />
+
+        <EbaySettings isConnected={ebayConnected} lastSynced={ebayLastSynced} />
       </div>
     </div>
   )
