@@ -1,9 +1,9 @@
 'use client'
 
 /**
- * Amazon transactions data table with sorting, delete, and edit actions.
+ * Business expenses data table with sorting, delete, and edit actions.
  */
-import { useMemo, useTransition } from 'react'
+import { useMemo, useTransition, useState } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -12,43 +12,52 @@ import {
   createColumnHelper,
   type SortingState,
 } from '@tanstack/react-table'
-import { useState } from 'react'
 import { format } from 'date-fns'
-import { ArrowUpDown, Pencil, Trash2, ShoppingBag, ExternalLink, Receipt } from 'lucide-react'
+import { ArrowUpDown, Pencil, Trash2, Receipt } from 'lucide-react'
 import { toast } from 'sonner'
-import { deleteAmazonTransaction } from '@/lib/actions/amazon-transactions'
+import { deleteBusinessExpense } from '@/lib/actions/business-expenses'
 import { formatCurrency } from '@/lib/utils/calculations'
-import type { AmazonTransaction } from '@/lib/types/database'
+import type { BusinessExpense } from '@/lib/types/database'
 
-const columnHelper = createColumnHelper<AmazonTransaction>()
+const columnHelper = createColumnHelper<BusinessExpense>()
 
-interface AmazonTransactionsTableProps {
-  transactions: AmazonTransaction[]
-  onEdit: (tx: AmazonTransaction) => void
-  onMarkAsExpense: (tx: AmazonTransaction) => void
+const CATEGORY_STYLES: Record<
+  string,
+  { label: string; className: string }
+> = {
+  amazon_order:  { label: 'Amazon Order',  className: 'bg-orange-100 text-orange-700' },
+  software:      { label: 'Software',      className: 'bg-blue-100 text-blue-700' },
+  subscription:  { label: 'Subscription',  className: 'bg-purple-100 text-purple-700' },
+  supplies:      { label: 'Supplies',      className: 'bg-teal-100 text-teal-700' },
+  shipping:      { label: 'Shipping',      className: 'bg-sky-100 text-sky-700' },
+  advertising:   { label: 'Advertising',   className: 'bg-pink-100 text-pink-700' },
+  other:         { label: 'Other',         className: 'bg-gray-100 text-gray-600' },
 }
 
-export default function AmazonTransactionsTable({
-  transactions,
+interface ExpensesTableProps {
+  expenses: BusinessExpense[]
+  onEdit: (expense: BusinessExpense) => void
+}
+
+export default function ExpensesTable({
+  expenses,
   onEdit,
-  onMarkAsExpense,
-}: AmazonTransactionsTableProps) {
+}: ExpensesTableProps) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 
   function handleDelete(id: string) {
-    if (!confirm('Delete this Amazon transaction? This cannot be undone.'))
-      return
+    if (!confirm('Delete this expense? This cannot be undone.')) return
 
     setDeletingId(id)
     startTransition(async () => {
-      const result = await deleteAmazonTransaction(id)
+      const result = await deleteBusinessExpense(id)
       setDeletingId(null)
       if (result.error) {
         toast.error(result.error)
       } else {
-        toast.success('Transaction deleted.')
+        toast.success('Expense deleted.')
       }
     })
   }
@@ -68,45 +77,38 @@ export default function AmazonTransactionsTable({
         ),
         cell: (info) =>
           info.getValue()
-            ? format(new Date(info.getValue()!), 'MMM d, yyyy')
+            ? format(new Date(info.getValue()), 'MMM d, yyyy')
             : '—',
       }),
-      columnHelper.accessor('order_number', {
+      columnHelper.accessor('description', {
         header: () => (
           <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Order #
+            Description
           </span>
         ),
         cell: (info) => (
-          <span className="font-mono text-xs text-gray-700">
-            {info.getValue()}
-          </span>
+          <span className="text-sm text-gray-900">{info.getValue()}</span>
         ),
       }),
-      columnHelper.accessor('type', {
+      columnHelper.accessor('category', {
         header: () => (
           <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Type
+            Category
           </span>
         ),
         cell: (info) => {
-          const type = info.getValue()
+          const cat = info.getValue()
+          const style = CATEGORY_STYLES[cat] ?? CATEGORY_STYLES.other
           return (
             <span
-              className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                type === 'complete'
-                  ? 'bg-green-100 text-green-700'
-                  : type === 'refund'
-                  ? 'bg-amber-100 text-amber-700'
-                  : 'bg-red-100 text-red-700'
-              }`}
+              className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${style.className}`}
             >
-              {type}
+              {style.label}
             </span>
           )
         },
       }),
-      columnHelper.accessor('total', {
+      columnHelper.accessor('amount', {
         header: ({ column }) => (
           <button
             className="flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wide hover:text-gray-700"
@@ -114,66 +116,31 @@ export default function AmazonTransactionsTable({
               column.toggleSorting(column.getIsSorted() === 'asc')
             }
           >
-            Total <ArrowUpDown size={12} />
+            Amount <ArrowUpDown size={12} />
           </button>
         ),
-        cell: (info) =>
-          info.getValue() != null ? formatCurrency(info.getValue()!) : '—',
-      }),
-      columnHelper.accessor('cost', {
-        header: ({ column }) => (
-          <button
-            className="flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wide hover:text-gray-700"
-            onClick={() =>
-              column.toggleSorting(column.getIsSorted() === 'asc')
-            }
-          >
-            Cost <ArrowUpDown size={12} />
-          </button>
+        cell: (info) => (
+          <span className="text-red-600 font-medium">
+            −{formatCurrency(info.getValue())}
+          </span>
         ),
-        cell: (info) =>
-          info.getValue() != null ? (
-            <span className="text-red-600">
-              {formatCurrency(info.getValue()!)}
-            </span>
-          ) : (
-            '—'
-          ),
       }),
-      columnHelper.accessor('status', {
+      columnHelper.accessor('notes', {
         header: () => (
           <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Status
+            Notes
           </span>
         ),
         cell: (info) => (
-          <span className="text-sm text-gray-500">{info.getValue() ?? '—'}</span>
-        ),
-      }),
-      columnHelper.accessor('tracking_url', {
-        header: () => (
-          <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Tracking
+          <span className="text-sm text-gray-500 truncate max-w-[200px] block">
+            {info.getValue() ?? '—'}
           </span>
         ),
-        cell: (info) =>
-          info.getValue() ? (
-            <a
-              href={info.getValue()!}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-brand-600 hover:text-brand-700 text-xs"
-            >
-              View <ExternalLink size={11} />
-            </a>
-          ) : (
-            <span className="text-gray-400 text-xs">—</span>
-          ),
       }),
-      columnHelper.accessor('corresponding_ebay_order', {
+      columnHelper.accessor('amazon_order_number', {
         header: () => (
           <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            eBay Order
+            Amazon Order
           </span>
         ),
         cell: (info) => (
@@ -191,13 +158,6 @@ export default function AmazonTransactionsTable({
         ),
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => onMarkAsExpense(row.original)}
-              className="p-1 text-gray-400 hover:text-orange-500 transition-colors"
-              title="Mark as business expense"
-            >
-              <Receipt size={14} />
-            </button>
             <button
               onClick={() => onEdit(row.original)}
               className="p-1 text-gray-400 hover:text-brand-600 transition-colors"
@@ -222,7 +182,7 @@ export default function AmazonTransactionsTable({
   )
 
   const table = useReactTable({
-    data: transactions,
+    data: expenses,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -230,13 +190,15 @@ export default function AmazonTransactionsTable({
     getSortedRowModel: getSortedRowModel(),
   })
 
-  if (transactions.length === 0) {
+  const totalAmount = expenses.reduce((sum, e) => sum + e.amount, 0)
+
+  if (expenses.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-        <ShoppingBag size={32} className="mx-auto text-gray-300 mb-3" />
-        <p className="text-gray-500 font-medium">No Amazon transactions yet</p>
+        <Receipt size={32} className="mx-auto text-gray-300 mb-3" />
+        <p className="text-gray-500 font-medium">No business expenses yet</p>
         <p className="text-gray-400 text-sm mt-1">
-          Add your first Amazon purchase using the button above.
+          Add expenses manually or mark an Amazon order as a business expense.
         </p>
       </div>
     )
@@ -280,8 +242,13 @@ export default function AmazonTransactionsTable({
         </table>
       </div>
 
-      <div className="px-4 py-3 border-t border-gray-100 text-xs text-gray-400">
-        {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
+      <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+        <span>
+          {expenses.length} expense{expenses.length !== 1 ? 's' : ''}
+        </span>
+        <span className="font-medium text-red-500">
+          Total: −{formatCurrency(totalAmount)}
+        </span>
       </div>
     </div>
   )

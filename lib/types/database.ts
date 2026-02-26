@@ -54,6 +54,29 @@ export interface AmazonTransaction {
   updated_at: string
 }
 
+// ─── Business Expense ─────────────────────────────────────────────────────────
+export type ExpenseCategory =
+  | 'amazon_order'
+  | 'software'
+  | 'subscription'
+  | 'supplies'
+  | 'shipping'
+  | 'advertising'
+  | 'other'
+
+export interface BusinessExpense {
+  id: string
+  user_id: string
+  date: string
+  description: string
+  amount: number
+  category: ExpenseCategory
+  notes: string | null
+  amazon_order_number: string | null
+  created_at: string
+  updated_at: string
+}
+
 // ─── User Settings ────────────────────────────────────────────────────────────
 export interface UserSettings {
   user_id: string
@@ -188,6 +211,31 @@ export type Database = {
         }
         Update: {
           apply_amazon_5pct_adjustment?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      business_expenses: {
+        Row: BusinessExpense
+        Insert: {
+          id?: string
+          user_id: string
+          date?: string
+          description: string
+          amount: number
+          category?: ExpenseCategory
+          notes?: string | null
+          amazon_order_number?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          date?: string
+          description?: string
+          amount?: number
+          category?: ExpenseCategory
+          notes?: string | null
+          amazon_order_number?: string | null
           updated_at?: string
         }
         Relationships: []

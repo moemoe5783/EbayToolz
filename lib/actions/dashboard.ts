@@ -24,18 +24,27 @@ export async function getDashboardStats(): Promise<{
 }> {
   const supabase = await createClient()
 
-  // Fetch both transaction types and settings in parallel
-  const [ebayResult, amazonResult, settingsResult] = await Promise.all([
-    supabase
-      .from('ebay_transactions')
-      .select('*')
-      .order('date', { ascending: false }),
-    supabase
-      .from('amazon_transactions')
-      .select('*')
-      .order('date', { ascending: false }),
-    getUserSettings(),
-  ])
+  // Calculate 30-day cutoff up front so it can be reused in the parallel fetch
+  const cutoff30 = new Date()
+  cutoff30.setDate(cutoff30.getDate() - 30)
+
+  // Fetch transactions, settings, and 30-day expenses in parallel
+  const [ebayResult, amazonResult, settingsResult, expensesResult] =
+    await Promise.all([
+      supabase
+        .from('ebay_transactions')
+        .select('*')
+        .order('date', { ascending: false }),
+      supabase
+        .from('amazon_transactions')
+        .select('*')
+        .order('date', { ascending: false }),
+      getUserSettings(),
+      supabase
+        .from('business_expenses')
+        .select('amount')
+        .gte('date', cutoff30.toISOString()),
+    ])
 
   if (ebayResult.error) return { data: null, error: ebayResult.error.message }
   if (amazonResult.error)
@@ -46,14 +55,17 @@ export async function getDashboardStats(): Promise<{
   const applyAdjustment =
     settingsResult.data?.apply_amazon_5pct_adjustment ?? true
 
-  // ─── Net profit (last 30 days) ─────────────────────────────────────────────
+  // ─── Net profit (last 30 days, after business expenses) ───────────────────
   const allClusters = buildClusters(ebayTxs, amazonTxs, applyAdjustment)
   const recentClusters = filterClustersByDays(allClusters, 30)
-  const netProfitLast30Days = totalNetProfit(recentClusters)
+  const clusterNet = totalNetProfit(recentClusters)
+  const totalExpenses30d = (expensesResult.data ?? []).reduce(
+    (sum, e) => sum + ((e as { amount: number }).amount ?? 0),
+    0
+  )
+  const netProfitLast30Days = clusterNet - totalExpenses30d
 
   // ─── Total sales / orders (last 30 days eBay) ──────────────────────────────
-  const cutoff30 = new Date()
-  cutoff30.setDate(cutoff30.getDate() - 30)
 
   const recentEbay = ebayTxs.filter(
     (t) => t.date && new Date(t.date) >= cutoff30 && t.type === 'sale'

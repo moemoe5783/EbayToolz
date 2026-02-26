@@ -13,15 +13,18 @@ import type { OrderCluster } from '@/lib/types/database'
 interface ClustersViewProps {
   clusters: OrderCluster[]
   applyAdjustment: boolean
+  totalExpenses: number
 }
 
 export default function ClustersView({
   clusters,
   applyAdjustment,
+  totalExpenses,
 }: ClustersViewProps) {
   const [showCalcDetails, setShowCalcDetails] = useState(false)
 
-  const totalProfit = clusters.reduce((sum, c) => sum + c.netProfit, 0)
+  const clusterProfit = clusters.reduce((sum, c) => sum + c.netProfit, 0)
+  const totalProfit = clusterProfit - totalExpenses
   const totalEbayNet = clusters.reduce((sum, c) => sum + c.ebayNet, 0)
   const totalAmazonCost = clusters.reduce(
     (sum, c) => sum + c.amazonCostAdjusted,
@@ -65,6 +68,16 @@ export default function ClustersView({
                 −{formatCurrency(totalAmazonCost)}
               </p>
             </div>
+            {totalExpenses > 0 && (
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">
+                  Business Expenses
+                </p>
+                <p className="text-xl font-bold text-red-600 mt-0.5">
+                  −{formatCurrency(totalExpenses)}
+                </p>
+              </div>
+            )}
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">
                 Net Profit

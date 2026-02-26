@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { getEbayTransactions } from '@/lib/actions/ebay-transactions'
 import { getAmazonTransactions } from '@/lib/actions/amazon-transactions'
+import { getBusinessExpenses } from '@/lib/actions/business-expenses'
 import TransactionsTabs from '@/components/transactions/transactions-tabs'
 
 export const metadata: Metadata = {
@@ -26,9 +27,10 @@ function TableSkeleton() {
 }
 
 async function TransactionsContent() {
-  const [ebayResult, amazonResult] = await Promise.all([
+  const [ebayResult, amazonResult, expensesResult] = await Promise.all([
     getEbayTransactions({ limit: 100 }),
     getAmazonTransactions({ limit: 100 }),
+    getBusinessExpenses({ limit: 100 }),
   ])
 
   return (
@@ -37,6 +39,8 @@ async function TransactionsContent() {
       ebayCount={ebayResult.count}
       amazonTransactions={amazonResult.data}
       amazonCount={amazonResult.count}
+      expenses={expensesResult.data}
+      expenseCount={expensesResult.count}
     />
   )
 }
@@ -47,7 +51,7 @@ export default function TransactionsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
         <p className="text-gray-500 mt-1">
-          All eBay and Amazon transactions — raw, unadjusted values
+          All eBay and Amazon transactions, plus business expenses
         </p>
       </div>
 

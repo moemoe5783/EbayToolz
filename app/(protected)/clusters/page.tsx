@@ -3,6 +3,7 @@ import { Suspense } from 'react'
 import { getEbayTransactions } from '@/lib/actions/ebay-transactions'
 import { getAllAmazonTransactions } from '@/lib/actions/amazon-transactions'
 import { getUserSettings } from '@/lib/actions/settings'
+import { getAllExpensesTotal } from '@/lib/actions/business-expenses'
 import { buildClusters } from '@/lib/utils/calculations'
 import ClustersView from '@/components/clusters/clusters-view'
 
@@ -31,11 +32,13 @@ function ClustersSkeleton() {
 }
 
 async function ClustersContent() {
-  const [ebayResult, amazonResult, settingsResult] = await Promise.all([
-    getEbayTransactions({}),
-    getAllAmazonTransactions(),
-    getUserSettings(),
-  ])
+  const [ebayResult, amazonResult, settingsResult, totalExpenses] =
+    await Promise.all([
+      getEbayTransactions({}),
+      getAllAmazonTransactions(),
+      getUserSettings(),
+      getAllExpensesTotal(),
+    ])
 
   const applyAdjustment =
     settingsResult.data?.apply_amazon_5pct_adjustment ?? true
@@ -50,6 +53,7 @@ async function ClustersContent() {
     <ClustersView
       clusters={clusters}
       applyAdjustment={applyAdjustment}
+      totalExpenses={totalExpenses}
     />
   )
 }
