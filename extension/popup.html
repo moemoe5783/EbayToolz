@@ -46,14 +46,14 @@
       </form>
     </div>
 
-    <!-- ── Not on Amazon ──────────────────────────────────────── -->
+    <!-- ── Not on Amazon/eBay ─────────────────────────────────── -->
     <div id="state-not-amazon" class="state hidden">
       <div class="header compact">
         <div class="wordmark-small">EbayToolz</div>
       </div>
       <div class="empty-state">
         <div class="empty-icon">🛒</div>
-        <p>Navigate to an Amazon <strong>order page</strong> or <strong>product page</strong> to get started.</p>
+        <p>Navigate to an Amazon <strong>order page</strong>, Amazon <strong>product page</strong>, or eBay <strong>Seller Hub order page</strong> to get started.</p>
         <a id="open-app-link" href="#" class="btn btn-secondary" target="_blank">
           Open EbayToolz
         </a>
@@ -156,11 +156,72 @@
       </div>
     </div>
 
+    <!-- ── eBay Order Form ─────────────────────────────────────── -->
+    <div id="state-ebay-order" class="state hidden">
+      <div class="header compact">
+        <div class="wordmark-small">EbayToolz</div>
+        <span class="badge" style="background:#e53935;color:#fff">eBay Order</span>
+      </div>
+      <form id="ebay-order-form" class="form scrollable">
+        <div class="field">
+          <label for="ebay-order-number">Order Number <span class="required">*</span></label>
+          <input type="text" id="ebay-order-number" placeholder="14-12345-67890" />
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="ebay-date">Date</label>
+            <input type="date" id="ebay-date" />
+          </div>
+          <div class="field">
+            <label for="ebay-type">Type</label>
+            <select id="ebay-type">
+              <option value="sale">Sale</option>
+              <option value="refund">Refund</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="ebay-total">Total ($)</label>
+            <input type="number" id="ebay-total" step="0.01" min="0" placeholder="0.00" />
+          </div>
+          <div class="field">
+            <label for="ebay-net">Net ($) <span class="muted">after fees</span></label>
+            <input type="number" id="ebay-net" step="0.01" min="0" placeholder="0.00" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="ebay-status">Status</label>
+          <input type="text" id="ebay-status" placeholder="Shipped, Delivered…" />
+        </div>
+        <div class="field">
+          <label for="ebay-buyer">Buyer</label>
+          <input type="text" id="ebay-buyer" placeholder="Buyer username or name" />
+        </div>
+        <div class="field">
+          <label for="ebay-shipping">Shipping Address</label>
+          <textarea id="ebay-shipping" rows="2" placeholder="123 Main St, City, State 12345"></textarea>
+        </div>
+        <div class="field">
+          <label for="ebay-amazon-order">Amazon Order # <span class="muted">(optional)</span></label>
+          <input type="text" id="ebay-amazon-order" placeholder="Link to matching Amazon order" />
+        </div>
+        <div id="ebay-order-error" class="error-msg hidden"></div>
+        <button type="submit" id="ebay-save-btn" class="btn btn-primary full-width">
+          Save to EbayToolz
+        </button>
+      </form>
+      <div class="footer">
+        <span id="user-email-ebay" class="user-email"></span>
+        <button id="signout-btn-ebay" class="btn btn-ghost">Sign out</button>
+      </div>
+    </div>
+
     <!-- ── Success ─────────────────────────────────────────────── -->
     <div id="state-success" class="state hidden center">
       <div class="success-check">✓</div>
       <h3>Transaction Saved!</h3>
-      <p>Your Amazon order has been added to EbayToolz.</p>
+      <p id="success-msg">Your order has been added to EbayToolz.</p>
       <div class="btn-group">
         <a id="view-link" href="#" class="btn btn-primary" target="_blank">
           View Transactions

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "EbayToolz Amazon Scraper",
-  "version": "1.0.0",
-  "description": "Scrape Amazon order and product data directly into EbayToolz",
+  "name": "EbayToolz Scraper",
+  "version": "1.1.0",
+  "description": "Scrape Amazon and eBay order data directly into EbayToolz",
 
   "permissions": ["storage", "activeTab", "scripting"],
 
@@ -10,13 +10,18 @@
     "*://*.amazon.com/*",
     "*://*.amazon.co.uk/*",
     "*://*.amazon.ca/*",
+    "*://*.ebay.com/*",
+    "*://*.ebay.co.uk/*",
+    "*://*.ebay.com.au/*",
+    "*://*.ebay.ca/*",
+    "*://*.ebay.de/*",
     "https://xozswskfbofsjlxalbnw.supabase.co/*",
     "https://ebay.mytoolz.work/*"
   ],
 
   "action": {
     "default_popup": "popup.html",
-    "default_title": "EbayToolz Amazon Scraper"
+    "default_title": "EbayToolz Scraper"
   },
 
   "content_scripts": [
@@ -27,6 +32,21 @@
         "*://*.amazon.ca/*"
       ],
       "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://*.ebay.com/mesh/ord/details*",
+        "*://*.ebay.co.uk/mesh/ord/details*",
+        "*://*.ebay.com.au/mesh/ord/details*",
+        "*://*.ebay.ca/mesh/ord/details*",
+        "*://*.ebay.de/mesh/ord/details*",
+        "*://*.ebay.com/sh/ord/details*",
+        "*://*.ebay.co.uk/sh/ord/details*",
+        "*://*.ebay.com/ord/details*",
+        "*://*.ebay.co.uk/ord/details*"
+      ],
+      "js": ["ebay-content.js"],
       "run_at": "document_idle"
     }
   ],

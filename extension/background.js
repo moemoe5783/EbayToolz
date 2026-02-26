@@ -147,6 +147,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     handleAutoSave(message.data).then(sendResponse)
     return true
   }
+  if (message.type === 'EBAY_AUTO_SAVE') {
+    handleEbayAutoSave(message.data).then(sendResponse)
+    return true
+  }
   if (message.type === 'REFRESH_TOKEN') {
     chrome.storage.local.get(['refresh_token']).then(({ refresh_token }) => {
       if (!refresh_token) { sendResponse({ success: false }); return }
@@ -245,6 +249,87 @@ async function handleAutoSave(orderData) {
   // Server already has it (409) — mark locally so we don't retry
   if (status === 409) {
     await markSynced(orderNumber, currentType)
+    return { status: 'duplicate' }
+  }
+
+  return { status: 'error', error: data?.error || 'Unknown error' }
+}
+
+// ── eBay order syncing ─────────────────────────────────────────────────────
+// Mirrors the Amazon flow, posting directly to Supabase REST for ebay_transactions.
+
+async function supabaseEbayRequest(token, method, path, body) {
+  const url = `${SUPABASE_URL}/rest/v1/ebay_transactions${path}`
+  const res = await fetch(url, {
+    method,
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify(body),
+  })
+  const ct = res.headers.get('content-type') || ''
+  if (!ct.includes('application/json')) {
+    return { ok: false, status: res.status, data: { error: `Unexpected response (${res.status})` } }
+  }
+  const data = await res.json()
+  return { ok: res.ok, status: res.status, data: Array.isArray(data) ? data[0] : data }
+}
+
+async function postEbayTransaction(token, payload) {
+  const userId = getUserIdFromJWT(token)
+  return supabaseEbayRequest(token, 'POST', '', { ...payload, user_id: userId })
+}
+
+// eBay orders use the same synced_orders cache with an 'ebay:' prefix
+// so they never collide with Amazon order numbers.
+const EBAY_PREFIX = 'ebay:'
+
+async function isAlreadySyncedEbay(orderNumber) {
+  return isAlreadySynced(EBAY_PREFIX + orderNumber)
+}
+
+async function markSyncedEbay(orderNumber, type = 'sale') {
+  return markSynced(EBAY_PREFIX + orderNumber, type)
+}
+
+async function handleEbayAutoSave(orderData) {
+  const token = await getValidToken()
+  if (!token) return { status: 'not_logged_in' }
+
+  const orderNumber = orderData.order_number
+  if (!orderNumber) return { status: 'error', error: 'No order number found on page' }
+
+  const currentType = orderData.type === 'refund' ? 'refund' : 'sale'
+
+  if (await isAlreadySyncedEbay(orderNumber)) {
+    return { status: 'duplicate' }
+  }
+
+  const payload = {
+    order_number: orderNumber,
+    date: orderData.date || new Date().toISOString(),
+    total: orderData.total || 0,
+    net: orderData.net || null,
+    type: currentType,
+    status: orderData.status || null,
+    buyer: orderData.buyer || null,
+    shipping_address: orderData.shipping_address || null,
+    transactions_json: orderData.transactions_json || [],
+    corresponding_amazon_order: null,
+  }
+
+  const { ok, status, data } = await postEbayTransaction(token, payload)
+
+  if (ok) {
+    await markSyncedEbay(orderNumber, currentType)
+    return { status: 'ok', data }
+  }
+
+  if (status === 409) {
+    await markSyncedEbay(orderNumber, currentType)
     return { status: 'duplicate' }
   }
 

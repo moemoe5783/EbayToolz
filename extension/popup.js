@@ -7,7 +7,7 @@
 const $ = (id) => document.getElementById(id)
 
 function showState(name) {
-  const ids = ['loading', 'login', 'not-amazon', 'order', 'product', 'success']
+  const ids = ['loading', 'login', 'not-amazon', 'order', 'product', 'ebay-order', 'success']
   ids.forEach((id) => {
     const el = $(`state-${id}`)
     if (el) el.classList.toggle('hidden', id !== name)
@@ -192,17 +192,86 @@ async function saveTransaction(token) {
 // ─── Sign-out wiring ───────────────────────────────────────────────────────
 
 function wireSignOutButtons() {
-  ;['na', 'order', 'product'].forEach((suffix) => {
+  ;['na', 'order', 'product', 'ebay'].forEach((suffix) => {
     const btn = $(`signout-btn-${suffix}`)
     if (btn) btn.addEventListener('click', signOut)
   })
 }
 
 function setUserEmail(email) {
-  ;['na', 'order', 'product'].forEach((suffix) => {
+  ;['na', 'order', 'product', 'ebay'].forEach((suffix) => {
     const el = $(`user-email-${suffix}`)
     if (el) el.textContent = email
   })
+}
+
+// ─── eBay helpers ──────────────────────────────────────────────────────────
+
+async function scrapeEbayCurrentTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (!tab?.url?.match(/ebay\.(com|co\.uk|com\.au|ca|de)/)) return null
+
+  try {
+    const response = await chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_EBAY_PAGE' })
+    return response
+  } catch {
+    // Content script not yet injected — inject and retry
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['ebay-content.js'] })
+    return await chrome.tabs.sendMessage(tab.id, { type: 'SCRAPE_EBAY_PAGE' })
+  }
+}
+
+function populateEbayOrderForm(data) {
+  $('ebay-order-number').value = data.order_number || ''
+  $('ebay-date').value = isoToDateInput(data.date)
+  $('ebay-total').value = data.total > 0 ? data.total.toFixed(2) : ''
+  $('ebay-net').value = data.net > 0 ? data.net.toFixed(2) : ''
+  $('ebay-type').value = data.type || 'sale'
+  $('ebay-status').value = data.status || ''
+  $('ebay-buyer').value = data.buyer || ''
+  $('ebay-shipping').value = data.shipping_address || ''
+  $('ebay-amazon-order').value = ''
+}
+
+async function saveEbayTransaction(token) {
+  const orderNumber = $('ebay-order-number').value.trim()
+  if (!orderNumber) throw new Error('Order number is required.')
+
+  const dateVal = $('ebay-date').value
+  const netVal = parseFloat($('ebay-net').value)
+
+  const payload = {
+    user_id: getUserIdFromJWT(token),
+    order_number: orderNumber,
+    date: dateVal ? new Date(dateVal).toISOString() : new Date().toISOString(),
+    total: parseFloat($('ebay-total').value) || 0,
+    net: isNaN(netVal) || netVal === 0 ? null : netVal,
+    type: $('ebay-type').value,
+    status: $('ebay-status').value.trim() || null,
+    buyer: $('ebay-buyer').value.trim() || null,
+    shipping_address: $('ebay-shipping').value.trim() || null,
+    corresponding_amazon_order: $('ebay-amazon-order').value.trim() || null,
+    transactions_json: [],
+  }
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/ebay_transactions`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await res.json()
+  if (!res.ok) {
+    const isDupe = res.status === 409 || data?.code === '23505'
+    throw new Error(isDupe ? 'This order number already exists.' : (data?.message || 'Failed to save transaction.'))
+  }
+
+  return Array.isArray(data) ? data[0] : data
 }
 
 // ─── Boot ──────────────────────────────────────────────────────────────────
@@ -221,8 +290,11 @@ async function boot() {
     if (asin && asin !== '—') navigator.clipboard.writeText(asin)
   })
 
-  // Back button (success → order form)
-  $('back-btn').addEventListener('click', () => showState('order'))
+  // Back button (success → order form or eBay form depending on what was saved)
+  $('back-btn').addEventListener('click', () => {
+    const lastPlatform = window._lastSavedPlatform || 'amazon'
+    showState(lastPlatform === 'ebay' ? 'ebay-order' : 'order')
+  })
 
   // Login form
   $('login-form').addEventListener('submit', async (e) => {
@@ -243,7 +315,7 @@ async function boot() {
     }
   })
 
-  // Order save form
+  // Amazon order save form
   $('order-form').addEventListener('submit', async (e) => {
     e.preventDefault()
     hideError('order-error')
@@ -254,9 +326,32 @@ async function boot() {
       const token = await getValidToken()
       if (!token) { signOut(); return }
       await saveTransaction(token)
+      window._lastSavedPlatform = 'amazon'
+      $('success-msg').textContent = 'Your Amazon order has been added to EbayToolz.'
       showState('success')
     } catch (err) {
       showError('order-error', err.message)
+    } finally {
+      setLoading(btn, false)
+    }
+  })
+
+  // eBay order save form
+  $('ebay-order-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    hideError('ebay-order-error')
+    const btn = $('ebay-save-btn')
+    setLoading(btn, true, 'Save to EbayToolz')
+
+    try {
+      const token = await getValidToken()
+      if (!token) { signOut(); return }
+      await saveEbayTransaction(token)
+      window._lastSavedPlatform = 'ebay'
+      $('success-msg').textContent = 'Your eBay order has been added to EbayToolz.'
+      showState('success')
+    } catch (err) {
+      showError('ebay-order-error', err.message)
     } finally {
       setLoading(btn, false)
     }
@@ -278,6 +373,7 @@ async function loadMain() {
   const stored = await chrome.storage.local.get(['user_email'])
   setUserEmail(stored.user_email || '')
 
+  // Try Amazon first
   let scraped = null
   try {
     scraped = await scrapeCurrentTab()
@@ -285,20 +381,32 @@ async function loadMain() {
     scraped = null
   }
 
-  if (!scraped || scraped.page_type === 'other' || !scraped.page_type) {
-    showState('not-amazon')
+  if (scraped && scraped.page_type === 'order') {
+    populateOrderForm(scraped)
+    showState('order')
+    return
+  }
+  if (scraped && scraped.page_type === 'product') {
+    populateProductInfo(scraped)
+    showState('product')
     return
   }
 
-  if (scraped.page_type === 'order') {
-    populateOrderForm(scraped)
-    showState('order')
-  } else if (scraped.page_type === 'product') {
-    populateProductInfo(scraped)
-    showState('product')
-  } else {
-    showState('not-amazon')
+  // Try eBay
+  let ebayScraped = null
+  try {
+    ebayScraped = await scrapeEbayCurrentTab()
+  } catch {
+    ebayScraped = null
   }
+
+  if (ebayScraped && ebayScraped.page_type === 'order') {
+    populateEbayOrderForm(ebayScraped)
+    showState('ebay-order')
+    return
+  }
+
+  showState('not-amazon')
 }
 
 document.addEventListener('DOMContentLoaded', boot)
