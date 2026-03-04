@@ -1,14 +1,5 @@
 'use server'
 
-/**
- * syncEbayOrders — Server Action
- *
- * Fetches the last 90 days of eBay orders via the Fulfillment API and
- * payout amounts via the Finances API, then upserts them into
- * ebay_transactions.  Uses the service_role client for the upsert so
- * it can bypass per-user RLS (we verify user identity via Supabase Auth).
- */
-
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getServiceClient } from '@/lib/supabase/service'
@@ -22,34 +13,31 @@ import {
   type EbayFinanceTransaction,
 } from '@/lib/ebay/client'
 
-export async function syncEbayOrders(options?: { dateFrom?: string }): Promise<{
-  ok: boolean
-  synced?: number
-  error?: string
-}> {
-  // Verify the caller is authenticated
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+type SyncResult = { ok: boolean; synced?: number; error?: string }
 
-  if (!user) return { ok: false, error: 'Not authenticated' }
-
-  // Get a valid (possibly auto-refreshed) eBay access token
-  const accessToken = await getValidEbayAccessToken(user.id)
+/**
+ * Core sync logic — callable from both the server action and the cron job.
+ * Does NOT verify auth; callers must ensure userId is trusted.
+ */
+export async function syncEbayOrdersForUser(
+  userId: string,
+  options?: { dateFrom?: string }
+): Promise<SyncResult> {
+  const accessToken = await getValidEbayAccessToken(userId)
   if (!accessToken) {
     return {
       ok: false,
-      error: 'eBay account not connected or session expired. Please reconnect.',
+      error: 'eBay account not connected or session expired.',
     }
   }
 
-  // Determine start date — caller-supplied or default 90 days
-  const dateFrom = options?.dateFrom ? new Date(options.dateFrom) : (() => {
-    const d = new Date()
-    d.setDate(d.getDate() - 90)
-    return d
-  })()
+  const dateFrom = options?.dateFrom
+    ? new Date(options.dateFrom)
+    : (() => {
+        const d = new Date()
+        d.setDate(d.getDate() - 90)
+        return d
+      })()
 
   let orders: EbayOrder[] = []
   let finances: EbayFinanceTransaction[] = []
@@ -66,17 +54,18 @@ export async function syncEbayOrders(options?: { dateFrom?: string }): Promise<{
     }
   }
 
-  // Build orderId → net payout map from the Finances API (SALE transactions only)
+  // net = gross sale amount minus eBay's total fees
   const netMap = new Map<string, number>()
   for (const t of finances) {
     if (t.orderId && t.transactionType === 'SALE' && t.amount?.value) {
-      netMap.set(t.orderId, parseFloat(t.amount.value))
+      const gross = parseFloat(t.amount.value)
+      const fees = parseFloat(t.totalFeeAmount?.value ?? '0') || 0
+      netMap.set(t.orderId, gross - fees)
     }
   }
 
   type EbayInsert = Database['public']['Tables']['ebay_transactions']['Insert']
 
-  // Map eBay API orders to ebay_transactions rows
   const rows: EbayInsert[] = orders.map((o) => {
     const isCanceled = o.cancelStatus?.cancelState === 'CANCEL_COMPLETE'
     const type: 'sale' | 'refund' = isCanceled ? 'refund' : 'sale'
@@ -99,7 +88,7 @@ export async function syncEbayOrders(options?: { dateFrom?: string }): Promise<{
       : (o.orderFulfillmentStatus?.replace(/_/g, ' ') ?? '')
 
     return {
-      user_id: user.id,
+      user_id: userId,
       order_number: o.orderId,
       date: o.creationDate,
       total,
@@ -114,23 +103,39 @@ export async function syncEbayOrders(options?: { dateFrom?: string }): Promise<{
   })
 
   if (rows.length > 0) {
-    // Upsert into ebay_transactions — update existing rows on conflict
     const db = getServiceClient()
     const { error } = await db
       .from('ebay_transactions')
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .upsert(rows as any, { onConflict: 'user_id,order_number', ignoreDuplicates: false })
 
-    if (error) {
-      return { ok: false, error: error.message }
-    }
+    if (error) return { ok: false, error: error.message }
   }
 
-  await updateLastSynced(user.id)
-
-  revalidatePath('/transactions')
-  revalidatePath('/clusters')
-  revalidatePath('/dashboard')
+  await updateLastSynced(userId)
 
   return { ok: true, synced: rows.length }
+}
+
+/**
+ * Server Action — called from the settings UI.
+ * Verifies the session then delegates to syncEbayOrdersForUser.
+ */
+export async function syncEbayOrders(options?: { dateFrom?: string }): Promise<SyncResult> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return { ok: false, error: 'Not authenticated' }
+
+  const result = await syncEbayOrdersForUser(user.id, options)
+
+  if (result.ok) {
+    revalidatePath('/transactions')
+    revalidatePath('/clusters')
+    revalidatePath('/dashboard')
+  }
+
+  return result
 }

@@ -175,6 +175,7 @@ export interface EbayFinanceTransaction {
   orderId?: string
   transactionType?: string // SALE, REFUND, CREDIT, DISPUTE, etc.
   amount?: { value?: string; currency?: string }
+  totalFeeAmount?: { value?: string; currency?: string }
   transactionDate?: string
 }
 
