@@ -80,12 +80,13 @@ export async function updateUserSettings(
 
   if (!user) return { error: 'Not authenticated' }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await supabase
     .from('user_settings')
     .upsert({
       user_id: user.id,
       ...parsed.data,
-    })
+    } as any)
     .select()
     .single()
 

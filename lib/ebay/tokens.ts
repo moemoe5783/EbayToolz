@@ -27,6 +27,7 @@ export async function storeEbayTokens(
   const db = getServiceClient()
   const now = Date.now()
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await db.from('ebay_oauth_tokens').upsert(
     {
       user_id: userId,
@@ -39,7 +40,7 @@ export async function storeEbayTokens(
       scope: tokens.scope ?? null,
       ebay_user_id: tokens.ebay_user_id ?? null,
       updated_at: new Date().toISOString(),
-    },
+    } as any,
     { onConflict: 'user_id' }
   )
 }
