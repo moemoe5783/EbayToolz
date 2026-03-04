@@ -8,10 +8,10 @@
  *   - Reading/writing ebay_oauth_tokens (RLS enabled, no policies = anon/auth blocked)
  *   - Admin-level upserts that need to bypass per-user RLS
  */
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/types/database'
 
-let _serviceClient: ReturnType<typeof createClient<Database>> | null = null
+let _serviceClient: SupabaseClient<Database> | null = null
 
 export function getServiceClient() {
   if (_serviceClient) return _serviceClient
