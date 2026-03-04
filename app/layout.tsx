@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'EbayToolz — eBay Order Manager',
   description:
-    'Manage your eBay selling operations in one place.',
+    'Manage your eBay selling operations in one place. Track orders, profits, and more.',
 }
 
 export default function RootLayout({
