@@ -22,7 +22,7 @@ export default async function LoginPage({
             ET
           </div>
           <h1 className="text-3xl font-bold text-gray-900">EbayToolz</h1>
-          <p className="text-gray-500 mt-1">Dropshipping management, simplified.</p>
+          <p className="text-gray-500 mt-1">eBay order management, simplified.</p>
         </div>
 
         {/* Auth error from callback */}

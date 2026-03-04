@@ -53,7 +53,7 @@ export default function Sidebar({ userEmail }: SidebarProps) {
         </div>
         <div>
           <p className="font-semibold text-gray-900 text-sm">EbayToolz</p>
-          <p className="text-xs text-gray-400">Dropshipping Manager</p>
+          <p className="text-xs text-gray-400">eBay Order Manager</p>
         </div>
       </div>
 

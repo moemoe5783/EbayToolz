@@ -6,9 +6,9 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'EbayToolz — Dropshipping Manager',
+  title: 'EbayToolz — eBay Order Manager',
   description:
-    'Manage your eBay and Amazon dropshipping operations in one place.',
+    'Manage your eBay selling operations in one place.',
 }
 
 export default function RootLayout({
