@@ -54,13 +54,27 @@ export async function syncEbayOrdersForUser(
     }
   }
 
-  // net = gross sale amount minus eBay's total fees
+  // Build per-order net payout from the Finances API.
+  // SALE:   seller receives (amount - fees)       → positive credit
+  // REFUND: seller pays back (amount - fee_credit) → negative debit
+  // Both can exist for the same orderId (e.g. partial return after a sale).
   const netMap = new Map<string, number>()
+  const saleOrderIds = new Set<string>()   // orderId had at least one SALE txn
+  const refundOrderIds = new Set<string>() // orderId had at least one REFUND txn
+
   for (const t of finances) {
-    if (t.orderId && t.transactionType === 'SALE' && t.amount?.value) {
-      const gross = parseFloat(t.amount.value)
-      const fees = parseFloat(t.totalFeeAmount?.value ?? '0') || 0
-      netMap.set(t.orderId, gross - fees)
+    if (!t.orderId || !t.amount?.value) continue
+    const amount = parseFloat(t.amount.value)
+    const fees = parseFloat(t.totalFeeAmount?.value ?? '0') || 0
+    const prev = netMap.get(t.orderId) ?? 0
+
+    if (t.transactionType === 'SALE') {
+      saleOrderIds.add(t.orderId)
+      netMap.set(t.orderId, prev + (amount - fees))
+    } else if (t.transactionType === 'REFUND') {
+      refundOrderIds.add(t.orderId)
+      // eBay credits back a portion of fees on refund, so net debit = amount - fee_credit
+      netMap.set(t.orderId, prev - (amount - fees))
     }
   }
 
@@ -68,7 +82,10 @@ export async function syncEbayOrdersForUser(
 
   const rows: EbayInsert[] = orders.map((o) => {
     const isCanceled = o.cancelStatus?.cancelState === 'CANCEL_COMPLETE'
-    const type: 'sale' | 'refund' = isCanceled ? 'refund' : 'sale'
+    // A return appears in the Finances API as a REFUND with no matching SALE
+    // (the original SALE was in a prior sync window, or was never processed)
+    const isReturn = refundOrderIds.has(o.orderId) && !saleOrderIds.has(o.orderId)
+    const type: 'sale' | 'refund' = isCanceled || isReturn ? 'refund' : 'sale'
 
     const total = parseFloat(o.pricingSummary?.total?.value ?? '0') || 0
     const net = netMap.get(o.orderId) ?? null
