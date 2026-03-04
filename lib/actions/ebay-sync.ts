@@ -12,6 +12,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getServiceClient } from '@/lib/supabase/service'
+import type { Database } from '@/lib/types/database'
 import { getValidEbayAccessToken, updateLastSynced } from '@/lib/ebay/tokens'
 import {
   fetchOrders,
@@ -70,8 +71,10 @@ export async function syncEbayOrders(): Promise<{
     }
   }
 
+  type EbayInsert = Database['public']['Tables']['ebay_transactions']['Insert']
+
   // Map eBay API orders to ebay_transactions rows
-  const rows = orders.map((o) => {
+  const rows: EbayInsert[] = orders.map((o) => {
     const isCanceled = o.cancelStatus?.cancelState === 'CANCEL_COMPLETE'
     const type: 'sale' | 'refund' = isCanceled ? 'refund' : 'sale'
 
@@ -112,7 +115,8 @@ export async function syncEbayOrders(): Promise<{
     const db = getServiceClient()
     const { error } = await db
       .from('ebay_transactions')
-      .upsert(rows, { onConflict: 'user_id,order_number', ignoreDuplicates: false })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .upsert(rows as any, { onConflict: 'user_id,order_number', ignoreDuplicates: false })
 
     if (error) {
       return { ok: false, error: error.message }
