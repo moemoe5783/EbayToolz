@@ -41,7 +41,8 @@ export async function storeEbayTokens(
     updated_at: new Date().toISOString(),
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await db.from('ebay_oauth_tokens').upsert(tokenRow as any, { onConflict: 'user_id' })
+  const { error } = await db.from('ebay_oauth_tokens').upsert(tokenRow as any, { onConflict: 'user_id' })
+  if (error) throw new Error(`Failed to store eBay tokens: ${error.message}`)
 }
 
 export async function getEbayTokens(userId: string): Promise<StoredTokens | null> {

@@ -9,8 +9,12 @@ export const metadata: Metadata = {
   title: 'Settings — EbayToolz',
 }
 
-export default async function SettingsPage() {
-  const supabase = await createClient()
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ebay?: string; reason?: string }>
+}) {
+  const [params, supabase] = await Promise.all([searchParams, createClient()])
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -20,6 +24,9 @@ export default async function SettingsPage() {
     user ? isEbayConnected(user.id) : Promise.resolve(false),
     user ? getEbayLastSynced(user.id) : Promise.resolve(null),
   ])
+
+  const ebayStatus = params.ebay as 'connected' | 'error' | undefined
+  const ebayErrorReason = params.reason
 
   return (
     <div>
@@ -48,7 +55,12 @@ export default async function SettingsPage() {
           }
         />
 
-        <EbaySettings isConnected={ebayConnected} lastSynced={ebayLastSynced} />
+        <EbaySettings
+          isConnected={ebayConnected}
+          lastSynced={ebayLastSynced}
+          ebayStatus={ebayStatus}
+          ebayErrorReason={ebayErrorReason}
+        />
       </div>
     </div>
   )

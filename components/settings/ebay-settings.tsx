@@ -1,21 +1,29 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { Loader2, CheckCircle, AlertCircle, RefreshCw, Unlink, Link, History } from 'lucide-react'
+import { toast } from 'sonner'
 import { syncEbayOrders } from '@/lib/actions/ebay-sync'
 
 interface EbaySettingsProps {
   isConnected: boolean
   lastSynced: Date | null
+  ebayStatus?: 'connected' | 'error'
+  ebayErrorReason?: string
 }
 
-export default function EbaySettings({ isConnected, lastSynced }: EbaySettingsProps) {
+export default function EbaySettings({ isConnected, lastSynced, ebayStatus, ebayErrorReason }: EbaySettingsProps) {
   const [isPending, startTransition] = useTransition()
   const [syncResult, setSyncResult] = useState<{
     ok: boolean
     synced?: number
     error?: string
   } | null>(null)
+
+  useEffect(() => {
+    if (ebayStatus === 'connected') toast.success('eBay account connected successfully.')
+    if (ebayStatus === 'error') toast.error(`eBay connection failed${ebayErrorReason ? `: ${ebayErrorReason.replace(/_/g, ' ')}` : '.'} Please try again.`)
+  }, [ebayStatus, ebayErrorReason])
 
   const [isHistoricalPending, startHistoricalTransition] = useTransition()
   const [historicalDate, setHistoricalDate] = useState('')
