@@ -9,6 +9,7 @@
 import { getServiceClient } from '@/lib/supabase/service'
 import { encrypt, decrypt } from '@/lib/ebay/crypto'
 import { refreshAccessToken, type TokenResponse } from '@/lib/ebay/client'
+import type { EbayOAuthToken } from '@/lib/types/database'
 
 interface StoredTokens {
   accessToken: string
@@ -45,12 +46,13 @@ export async function storeEbayTokens(
 
 export async function getEbayTokens(userId: string): Promise<StoredTokens | null> {
   const db = getServiceClient()
-  const { data } = await db
+  const { data: rawData } = await db
     .from('ebay_oauth_tokens')
     .select('*')
     .eq('user_id', userId)
     .single()
 
+  const data = rawData as EbayOAuthToken | null
   if (!data) return null
 
   return {
