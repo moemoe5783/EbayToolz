@@ -187,28 +187,27 @@ export async function fetchFinanceTransactions(
   let offset = 0
   const limit = 50
 
-  try {
-    while (true) {
-      const params = new URLSearchParams({
-        filter: `transactionDate:[${toEbayDate(dateFrom)}..${toEbayDate(new Date())}]`,
-        limit: String(limit),
-        offset: String(offset),
-      })
-      const res = await fetch(`${API_BASE}/sell/finances/v1/transaction?${params}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      })
-      if (!res.ok) break // Finances API is optional — proceed without net amounts
-      const data = await res.json()
-      const batch: EbayFinanceTransaction[] = data.transactions ?? []
-      txns.push(...batch)
-      if (batch.length < limit || txns.length >= (data.total ?? 0)) break
-      offset += limit
+  while (true) {
+    const params = new URLSearchParams({
+      filter: `transactionDate:[${toEbayDate(dateFrom)}..${toEbayDate(new Date())}],transactionType:[SALE|REFUND]`,
+      limit: String(limit),
+      offset: String(offset),
+    })
+    const res = await fetch(`${API_BASE}/sell/finances/v1/transaction?${params}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`eBay Finance API failed (${res.status}): ${text}`)
     }
-  } catch {
-    // Non-fatal: sync continues without payout amounts
+    const data = await res.json()
+    const batch: EbayFinanceTransaction[] = data.transactions ?? []
+    txns.push(...batch)
+    if (batch.length < limit || txns.length >= (data.total ?? 0)) break
+    offset += limit
   }
 
   return txns

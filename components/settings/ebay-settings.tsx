@@ -18,6 +18,7 @@ export default function EbaySettings({ isConnected, lastSynced, ebayStatus, ebay
     ok: boolean
     synced?: number
     error?: string
+    warning?: string
   } | null>(null)
 
   useEffect(() => {
@@ -32,6 +33,7 @@ export default function EbaySettings({ isConnected, lastSynced, ebayStatus, ebay
     ok: boolean
     synced?: number
     error?: string
+    warning?: string
   } | null>(null)
 
   function handleSync() {
@@ -85,23 +87,38 @@ export default function EbaySettings({ isConnected, lastSynced, ebayStatus, ebay
 
             {/* Sync result feedback */}
             {syncResult && (
-              <div
-                className={`flex items-start gap-2 p-3 rounded-lg text-sm ${
-                  syncResult.ok
-                    ? 'bg-green-50 border border-green-200 text-green-700'
-                    : 'bg-red-50 border border-red-200 text-red-700'
-                }`}
-              >
-                {syncResult.ok ? (
-                  <CheckCircle size={15} className="shrink-0 mt-0.5" />
-                ) : (
-                  <AlertCircle size={15} className="shrink-0 mt-0.5" />
+              <div className="space-y-2">
+                <div
+                  className={`flex items-start gap-2 p-3 rounded-lg text-sm ${
+                    syncResult.ok
+                      ? 'bg-green-50 border border-green-200 text-green-700'
+                      : 'bg-red-50 border border-red-200 text-red-700'
+                  }`}
+                >
+                  {syncResult.ok ? (
+                    <CheckCircle size={15} className="shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                  )}
+                  <span>
+                    {syncResult.ok
+                      ? `Synced ${syncResult.synced} order${syncResult.synced === 1 ? '' : 's'} from the last 90 days.`
+                      : syncResult.error}
+                  </span>
+                </div>
+                {syncResult.ok && syncResult.warning && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg text-sm bg-yellow-50 border border-yellow-200 text-yellow-800">
+                    <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                    <span>
+                      {syncResult.warning}
+                      {syncResult.warning.includes('401') || syncResult.warning.includes('403') ? (
+                        <> &mdash; your token may be missing the Finance scope.{' '}
+                          <a href="/api/ebay/connect" className="underline font-medium">Re-connect eBay</a> to fix.
+                        </>
+                      ) : null}
+                    </span>
+                  </div>
                 )}
-                <span>
-                  {syncResult.ok
-                    ? `Synced ${syncResult.synced} order${syncResult.synced === 1 ? '' : 's'} from the last 90 days.`
-                    : syncResult.error}
-                </span>
               </div>
             )}
 
@@ -144,23 +161,38 @@ export default function EbaySettings({ isConnected, lastSynced, ebayStatus, ebay
               </p>
 
               {historicalResult && (
-                <div
-                  className={`flex items-start gap-2 p-3 rounded-lg text-sm mb-3 ${
-                    historicalResult.ok
-                      ? 'bg-green-50 border border-green-200 text-green-700'
-                      : 'bg-red-50 border border-red-200 text-red-700'
-                  }`}
-                >
-                  {historicalResult.ok ? (
-                    <CheckCircle size={15} className="shrink-0 mt-0.5" />
-                  ) : (
-                    <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                <div className="space-y-2 mb-3">
+                  <div
+                    className={`flex items-start gap-2 p-3 rounded-lg text-sm ${
+                      historicalResult.ok
+                        ? 'bg-green-50 border border-green-200 text-green-700'
+                        : 'bg-red-50 border border-red-200 text-red-700'
+                    }`}
+                  >
+                    {historicalResult.ok ? (
+                      <CheckCircle size={15} className="shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                    )}
+                    <span>
+                      {historicalResult.ok
+                        ? `Imported ${historicalResult.synced} order${historicalResult.synced === 1 ? '' : 's'} since ${historicalDate}.`
+                        : historicalResult.error}
+                    </span>
+                  </div>
+                  {historicalResult.ok && historicalResult.warning && (
+                    <div className="flex items-start gap-2 p-3 rounded-lg text-sm bg-yellow-50 border border-yellow-200 text-yellow-800">
+                      <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                      <span>
+                        {historicalResult.warning}
+                        {historicalResult.warning.includes('401') || historicalResult.warning.includes('403') ? (
+                          <> &mdash; your token may be missing the Finance scope.{' '}
+                            <a href="/api/ebay/connect" className="underline font-medium">Re-connect eBay</a> to fix.
+                          </>
+                        ) : null}
+                      </span>
+                    </div>
                   )}
-                  <span>
-                    {historicalResult.ok
-                      ? `Imported ${historicalResult.synced} order${historicalResult.synced === 1 ? '' : 's'} since ${historicalDate}.`
-                      : historicalResult.error}
-                  </span>
                 </div>
               )}
 

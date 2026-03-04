@@ -13,7 +13,7 @@ import {
   type EbayFinanceTransaction,
 } from '@/lib/ebay/client'
 
-type SyncResult = { ok: boolean; synced?: number; error?: string }
+type SyncResult = { ok: boolean; synced?: number; error?: string; warning?: string }
 
 /**
  * Core sync logic — callable from both the server action and the cron job.
@@ -41,17 +41,25 @@ export async function syncEbayOrdersForUser(
 
   let orders: EbayOrder[] = []
   let finances: EbayFinanceTransaction[] = []
+  let financeWarning: string | undefined
 
   try {
-    ;[orders, finances] = await Promise.all([
-      fetchOrders(accessToken, dateFrom),
-      fetchFinanceTransactions(accessToken, dateFrom),
-    ])
+    orders = await fetchOrders(accessToken, dateFrom)
   } catch (err) {
     return {
       ok: false,
-      error: err instanceof Error ? err.message : 'Failed to fetch eBay data',
+      error: err instanceof Error ? err.message : 'Failed to fetch eBay orders',
     }
+  }
+
+  try {
+    finances = await fetchFinanceTransactions(accessToken, dateFrom)
+  } catch (err) {
+    // Finance API is non-fatal — orders sync succeeds but net amounts won't be populated
+    financeWarning =
+      err instanceof Error
+        ? `Net amounts unavailable: ${err.message}`
+        : 'Net amounts unavailable: Finance API error'
   }
 
   // Build per-order net payout from the Finances API.
@@ -131,7 +139,7 @@ export async function syncEbayOrdersForUser(
 
   await updateLastSynced(userId)
 
-  return { ok: true, synced: rows.length }
+  return { ok: true, synced: rows.length, warning: financeWarning }
 }
 
 /**
