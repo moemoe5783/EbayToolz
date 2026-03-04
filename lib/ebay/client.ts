@@ -7,7 +7,8 @@
  * Required environment variables:
  *   EBAY_CLIENT_ID       — from eBay developer portal
  *   EBAY_CLIENT_SECRET   — server-only, never prefix with NEXT_PUBLIC_
- *   EBAY_REDIRECT_URI    — e.g. https://yourdomain.com/api/ebay/callback
+ *   EBAY_RUNAME          — the RuName eBay assigns when you register your redirect URL
+ *                          (NOT the URL itself — find it in developer portal → User Tokens)
  *   EBAY_ENVIRONMENT     — "PRODUCTION" or "SANDBOX" (defaults to PRODUCTION)
  */
 
@@ -23,9 +24,9 @@ function clientSecret() {
   if (!process.env.EBAY_CLIENT_SECRET) throw new Error('EBAY_CLIENT_SECRET env var is not set')
   return process.env.EBAY_CLIENT_SECRET
 }
-function redirectUri() {
-  if (!process.env.EBAY_REDIRECT_URI) throw new Error('EBAY_REDIRECT_URI env var is not set')
-  return process.env.EBAY_REDIRECT_URI
+function ruName() {
+  if (!process.env.EBAY_RUNAME) throw new Error('EBAY_RUNAME env var is not set')
+  return process.env.EBAY_RUNAME
 }
 
 export const SCOPES = [
@@ -38,7 +39,7 @@ export const SCOPES = [
 export function buildAuthorizationUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: clientId(),
-    redirect_uri: redirectUri(),
+    redirect_uri: ruName(),
     response_type: 'code',
     scope: SCOPES,
     state,
@@ -69,7 +70,7 @@ export async function exchangeCode(code: string): Promise<TokenResponse> {
     body: new URLSearchParams({
       grant_type: 'authorization_code',
       code,
-      redirect_uri: redirectUri(),
+      redirect_uri: ruName(),
     }),
   })
   if (!res.ok) {
