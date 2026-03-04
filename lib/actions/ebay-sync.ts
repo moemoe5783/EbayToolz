@@ -22,7 +22,7 @@ import {
   type EbayFinanceTransaction,
 } from '@/lib/ebay/client'
 
-export async function syncEbayOrders(): Promise<{
+export async function syncEbayOrders(options?: { dateFrom?: string }): Promise<{
   ok: boolean
   synced?: number
   error?: string
@@ -44,9 +44,12 @@ export async function syncEbayOrders(): Promise<{
     }
   }
 
-  // Fetch the last 90 days
-  const dateFrom = new Date()
-  dateFrom.setDate(dateFrom.getDate() - 90)
+  // Determine start date — caller-supplied or default 90 days
+  const dateFrom = options?.dateFrom ? new Date(options.dateFrom) : (() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 90)
+    return d
+  })()
 
   let orders: EbayOrder[] = []
   let finances: EbayFinanceTransaction[] = []

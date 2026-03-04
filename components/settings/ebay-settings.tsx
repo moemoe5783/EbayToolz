@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Loader2, CheckCircle, AlertCircle, RefreshCw, Unlink, Link } from 'lucide-react'
+import { Loader2, CheckCircle, AlertCircle, RefreshCw, Unlink, Link, History } from 'lucide-react'
 import { syncEbayOrders } from '@/lib/actions/ebay-sync'
 
 interface EbaySettingsProps {
@@ -17,11 +17,28 @@ export default function EbaySettings({ isConnected, lastSynced }: EbaySettingsPr
     error?: string
   } | null>(null)
 
+  const [isHistoricalPending, startHistoricalTransition] = useTransition()
+  const [historicalDate, setHistoricalDate] = useState('')
+  const [historicalResult, setHistoricalResult] = useState<{
+    ok: boolean
+    synced?: number
+    error?: string
+  } | null>(null)
+
   function handleSync() {
     setSyncResult(null)
     startTransition(async () => {
       const result = await syncEbayOrders()
       setSyncResult(result)
+    })
+  }
+
+  function handleHistoricalSync() {
+    if (!historicalDate) return
+    setHistoricalResult(null)
+    startHistoricalTransition(async () => {
+      const result = await syncEbayOrders({ dateFrom: historicalDate })
+      setHistoricalResult(result)
     })
   }
 
@@ -82,7 +99,7 @@ export default function EbaySettings({ isConnected, lastSynced }: EbaySettingsPr
             <div className="flex items-center gap-3 pt-1">
               <button
                 onClick={handleSync}
-                disabled={isPending}
+                disabled={isPending || isHistoricalPending}
                 className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white text-sm font-medium rounded-lg transition-colors"
               >
                 {isPending ? (
@@ -106,6 +123,60 @@ export default function EbaySettings({ isConnected, lastSynced }: EbaySettingsPr
               Sync pulls the last 90 days of eBay orders. Orders already in
               EbayToolz are updated with the latest data.
             </p>
+
+            {/* Historical import */}
+            <div className="pt-2 border-t border-gray-100">
+              <div className="flex items-center gap-2 mb-2">
+                <History size={14} className="text-gray-400" />
+                <span className="text-sm font-medium text-gray-700">Import Past Orders</span>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                Pull orders from a specific date forward — useful for a first-time setup with existing history.
+              </p>
+
+              {historicalResult && (
+                <div
+                  className={`flex items-start gap-2 p-3 rounded-lg text-sm mb-3 ${
+                    historicalResult.ok
+                      ? 'bg-green-50 border border-green-200 text-green-700'
+                      : 'bg-red-50 border border-red-200 text-red-700'
+                  }`}
+                >
+                  {historicalResult.ok ? (
+                    <CheckCircle size={15} className="shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                  )}
+                  <span>
+                    {historicalResult.ok
+                      ? `Imported ${historicalResult.synced} order${historicalResult.synced === 1 ? '' : 's'} since ${historicalDate}.`
+                      : historicalResult.error}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3">
+                <input
+                  type="date"
+                  value={historicalDate}
+                  onChange={(e) => setHistoricalDate(e.target.value)}
+                  max={new Date().toISOString().split('T')[0]}
+                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+                />
+                <button
+                  onClick={handleHistoricalSync}
+                  disabled={!historicalDate || isPending || isHistoricalPending}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-800 disabled:bg-gray-300 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {isHistoricalPending ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <History size={15} />
+                  )}
+                  {isHistoricalPending ? 'Importing…' : 'Import'}
+                </button>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
