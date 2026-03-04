@@ -27,22 +27,20 @@ export async function storeEbayTokens(
   const db = getServiceClient()
   const now = Date.now()
 
+  const tokenRow = {
+    user_id: userId,
+    access_token: encrypt(tokens.access_token),
+    refresh_token: encrypt(tokens.refresh_token),
+    expires_at: new Date(now + tokens.expires_in * 1000).toISOString(),
+    refresh_token_expires_at: tokens.refresh_token_expires_in
+      ? new Date(now + tokens.refresh_token_expires_in * 1000).toISOString()
+      : null,
+    scope: tokens.scope ?? null,
+    ebay_user_id: tokens.ebay_user_id ?? null,
+    updated_at: new Date().toISOString(),
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await db.from('ebay_oauth_tokens').upsert(
-    {
-      user_id: userId,
-      access_token: encrypt(tokens.access_token),
-      refresh_token: encrypt(tokens.refresh_token),
-      expires_at: new Date(now + tokens.expires_in * 1000).toISOString(),
-      refresh_token_expires_at: tokens.refresh_token_expires_in
-        ? new Date(now + tokens.refresh_token_expires_in * 1000).toISOString()
-        : null,
-      scope: tokens.scope ?? null,
-      ebay_user_id: tokens.ebay_user_id ?? null,
-      updated_at: new Date().toISOString(),
-    } as any,
-    { onConflict: 'user_id' }
-  )
+  await db.from('ebay_oauth_tokens').upsert(tokenRow as any, { onConflict: 'user_id' })
 }
 
 export async function getEbayTokens(userId: string): Promise<StoredTokens | null> {
