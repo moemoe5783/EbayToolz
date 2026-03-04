@@ -62,8 +62,9 @@ export async function GET(request: NextRequest) {
     const tokens = await exchangeCode(code)
     await storeEbayTokens(userId, tokens)
   } catch (err) {
-    console.error('[eBay OAuth] Token exchange error:', err)
-    return redirect('/settings?ebay=error&reason=token_exchange')
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[eBay OAuth] Token exchange error:', msg)
+    return redirect(`/settings?ebay=error&reason=${encodeURIComponent(msg)}`)
   }
 
   // Clean up the nonce cookie

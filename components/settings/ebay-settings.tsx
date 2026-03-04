@@ -27,6 +27,7 @@ export default function EbaySettings({ isConnected, lastSynced, ebayStatus, ebay
 
   const [isHistoricalPending, startHistoricalTransition] = useTransition()
   const [historicalDate, setHistoricalDate] = useState('')
+  const todayStr = typeof window !== 'undefined' ? new Date().toISOString().split('T')[0] : undefined
   const [historicalResult, setHistoricalResult] = useState<{
     ok: boolean
     synced?: number
@@ -168,7 +169,7 @@ export default function EbaySettings({ isConnected, lastSynced, ebayStatus, ebay
                   type="date"
                   value={historicalDate}
                   onChange={(e) => setHistoricalDate(e.target.value)}
-                  max={new Date().toISOString().split('T')[0]}
+                  max={todayStr}
                   className="px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 />
                 <button
