@@ -72,17 +72,18 @@ export async function syncEbayOrdersForUser(
 
   for (const t of finances) {
     if (!t.orderId || !t.amount?.value) continue
+    // The Finance API `amount` is already the net payout to the seller —
+    // eBay pre-deducts its fees before setting this value. Do NOT subtract
+    // totalFeeAmount again; that would double-count the fees.
     const amount = parseFloat(t.amount.value)
-    const fees = parseFloat(t.totalFeeAmount?.value ?? '0') || 0
     const prev = netMap.get(t.orderId) ?? 0
 
     if (t.transactionType === 'SALE') {
       saleOrderIds.add(t.orderId)
-      netMap.set(t.orderId, prev + (amount - fees))
+      netMap.set(t.orderId, prev + amount)
     } else if (t.transactionType === 'REFUND') {
       refundOrderIds.add(t.orderId)
-      // eBay credits back a portion of fees on refund, so net debit = amount - fee_credit
-      netMap.set(t.orderId, prev - (amount - fees))
+      netMap.set(t.orderId, prev - amount)
     }
   }
 
