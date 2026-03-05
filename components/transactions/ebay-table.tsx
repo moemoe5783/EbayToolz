@@ -26,7 +26,13 @@ const columnHelper = createColumnHelper<EbayTransaction>()
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
 function getStatusMeta(status: string | null, type: 'sale' | 'refund') {
-  const s = (status ?? '').toUpperCase()
+  if (!status)
+    return {
+      label: type === 'refund' ? 'Refund' : 'Unknown',
+      className: 'bg-gray-100 text-gray-500',
+    }
+
+  const s = status.toUpperCase()
 
   if (s.includes('CANCEL'))
     return { label: 'Cancelled', className: 'bg-red-100 text-red-700' }
@@ -47,11 +53,6 @@ function getStatusMeta(status: string | null, type: 'sale' | 'refund') {
     return { label: 'Fulfilled', className: 'bg-green-100 text-green-700' }
   if (s.includes('ACTIVE') || s.includes('PAID') || s.includes('PROCESS'))
     return { label: 'Active', className: 'bg-blue-100 text-blue-700' }
-  if (!status)
-    return {
-      label: type === 'refund' ? 'Refund' : 'Unknown',
-      className: 'bg-gray-100 text-gray-500',
-    }
 
   // Unknown value — show it capitalised but styled neutrally
   return {
