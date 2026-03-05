@@ -91,13 +91,43 @@ export async function syncEbayOrdersForUser(
 
   const rows: EbayInsert[] = orders.map((o) => {
     const isCanceled = o.cancelStatus?.cancelState === 'CANCEL_COMPLETE'
-    // A return appears in the Finances API as a REFUND with no matching SALE
-    // (the original SALE was in a prior sync window, or was never processed)
-    const isReturn = refundOrderIds.has(o.orderId) && !saleOrderIds.has(o.orderId)
-    const type: 'sale' | 'refund' = isCanceled || isReturn ? 'refund' : 'sale'
+    const hasRefund = refundOrderIds.has(o.orderId)
+    const hasSale  = saleOrderIds.has(o.orderId)
+    // Return with no SALE in the sync window → original sale was in a prior
+    // period; only the return/refund transaction appeared this window.
+    const isReturnOnly = hasRefund && !hasSale
 
     const total = parseFloat(o.pricingSummary?.total?.value ?? '0') || 0
     const net = netMap.get(o.orderId) ?? null
+
+    // Derive a human-readable status using cancel + finance signals.
+    // orderFulfillmentStatus is only about shipping ("FULFILLED", "IN_PROGRESS",
+    // "NOT_STARTED") — it never reflects returns or refunds.
+    let status: string
+    if (isCanceled) {
+      status = 'Cancelled'
+    } else if (isReturnOnly) {
+      status = 'Returned'
+    } else if (hasRefund && hasSale) {
+      // Both a SALE and REFUND exist within the sync window.
+      // Net ≤ 0 means the full amount was refunded (full return).
+      // Net > 0 means a partial refund was issued.
+      status = (net ?? 0) <= 0 ? 'Returned' : 'Partially Refunded'
+    } else {
+      // Pure sale — translate the fulfillment shipping status.
+      const fs = o.orderFulfillmentStatus ?? ''
+      if (fs === 'FULFILLED') status = 'Fulfilled'
+      else if (fs === 'IN_PROGRESS') status = 'In Progress'
+      else if (fs === 'NOT_STARTED') status = 'Pending'
+      else status = fs.replace(/_/g, ' ')
+    }
+
+    // type drives financial calculations: mark anything that resulted in a
+    // net payout loss as a 'refund'.
+    const type: 'sale' | 'refund' =
+      isCanceled || isReturnOnly || (hasRefund && hasSale && (net ?? 0) <= 0)
+        ? 'refund'
+        : 'sale'
 
     const buyerName =
       o.buyer?.buyerRegistrationAddress?.fullName ?? o.buyer?.username ?? null
@@ -108,10 +138,6 @@ export async function syncEbayOrdersForUser(
       price: parseFloat(li.lineItemCost?.value ?? '0') || 0,
       ...(li.sku ? { sku: li.sku } : {}),
     }))
-
-    const status = isCanceled
-      ? 'Cancelled'
-      : (o.orderFulfillmentStatus?.replace(/_/g, ' ') ?? '')
 
     return {
       user_id: userId,

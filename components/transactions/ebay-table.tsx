@@ -51,8 +51,10 @@ function getStatusMeta(status: string | null, type: 'sale' | 'refund') {
     s.includes('SHIPPED')
   )
     return { label: 'Fulfilled', className: 'bg-green-100 text-green-700' }
-  if (s.includes('ACTIVE') || s.includes('PAID') || s.includes('PROCESS'))
-    return { label: 'Active', className: 'bg-blue-100 text-blue-700' }
+  if (s.includes('PROGRESS'))
+    return { label: 'In Progress', className: 'bg-blue-100 text-blue-700' }
+  if (s.includes('PENDING') || s.includes('NOT STARTED') || s.includes('ACTIVE') || s.includes('PAID'))
+    return { label: 'Pending', className: 'bg-yellow-100 text-yellow-700' }
 
   // Unknown value — show it capitalised but styled neutrally
   return {
