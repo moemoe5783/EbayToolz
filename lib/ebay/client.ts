@@ -14,6 +14,8 @@
 
 const isProduction = process.env.EBAY_ENVIRONMENT !== 'SANDBOX'
 const API_BASE = isProduction ? 'https://api.ebay.com' : 'https://api.sandbox.ebay.com'
+// The Sell Finances API is hosted on apiz.ebay.com (note the 'z'), a separate gateway
+const APIZ_BASE = isProduction ? 'https://apiz.ebay.com' : 'https://apiz.sandbox.ebay.com'
 const AUTH_BASE = isProduction ? 'https://auth.ebay.com' : 'https://auth.sandbox.ebay.com'
 
 function clientId() {
@@ -193,7 +195,7 @@ export async function fetchFinanceTransactions(
       limit: String(limit),
       offset: String(offset),
     })
-    const res = await fetch(`${API_BASE}/sell/finances/v1/transaction?${params}`, {
+    const res = await fetch(`${APIZ_BASE}/sell/finances/v1/transaction?${params}`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
