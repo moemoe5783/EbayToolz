@@ -39,21 +39,22 @@ export default function StatsCards({ stats }: StatsCardsProps) {
   ]
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-6">
       {cards.map((card) => {
         const Icon = card.icon
         return (
           <div
             key={card.label}
-            className="bg-white rounded-xl p-6 shadow-sm border border-gray-100"
+            className="bg-white rounded-xl p-4 sm:p-6 shadow-sm border border-gray-100"
           >
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-medium text-gray-500">{card.label}</p>
-              <div className={`p-2 rounded-lg ${card.color}`}>
-                <Icon size={18} />
+            <div className="flex items-start justify-between mb-3 sm:mb-4 gap-2">
+              <p className="text-xs sm:text-sm font-medium text-gray-500 leading-tight">{card.label}</p>
+              <div className={`p-1.5 sm:p-2 rounded-lg shrink-0 ${card.color}`}>
+                <Icon size={15} className="sm:hidden" />
+                <Icon size={18} className="hidden sm:block" />
               </div>
             </div>
-            <p className={`text-2xl font-bold ${card.valueColor}`}>
+            <p className={`text-xl sm:text-2xl font-bold ${card.valueColor}`}>
               {card.value}
             </p>
           </div>

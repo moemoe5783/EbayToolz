@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/layout/sidebar'
 import Navbar from '@/components/layout/navbar'
+import MobileNav from '@/components/layout/mobile-nav'
 import AutoSync from '@/components/layout/auto-sync'
 import { getEbayLastSynced } from '@/lib/ebay/tokens'
 
@@ -38,17 +39,20 @@ export default async function ProtectedLayout({
       {/* Auto-sync eBay on first load or if stale */}
       <AutoSync shouldSync={shouldSync} />
 
-      {/* Sidebar */}
+      {/* Sidebar — desktop only */}
       <Sidebar userEmail={user.email ?? ''} />
 
       {/* Main content area */}
       <div className="flex flex-col flex-1 overflow-hidden">
         <Navbar userEmail={user.email ?? ''} />
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 md:pb-6">
           {children}
         </main>
       </div>
+
+      {/* Bottom nav — mobile only */}
+      <MobileNav />
     </div>
   )
 }

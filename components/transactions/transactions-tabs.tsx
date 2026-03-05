@@ -96,10 +96,10 @@ export default function TransactionsTabs({
 
   return (
     <div>
-      {/* Header row */}
-      <div className="flex items-center justify-between mb-4">
+      {/* Header row — stacks on mobile */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         {/* Tabs */}
-        <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+        <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-full sm:w-auto">
           <Tab
             label="eBay"
             count={ebayCount}
@@ -123,7 +123,7 @@ export default function TransactionsTabs({
         {/* Add button */}
         <button
           onClick={isExpenseTab ? openAddExpenseModal : openCreateModal}
-          className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg transition-colors"
+          className="flex items-center justify-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg transition-colors w-full sm:w-auto"
         >
           <Plus size={16} />
           {isExpenseTab ? 'Add Expense' : 'Add Transaction'}
@@ -185,14 +185,14 @@ function Tab({
   return (
     <button
       onClick={onClick}
-      className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+      className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 text-sm font-medium rounded-md transition-all ${
         active
           ? 'bg-white text-gray-900 shadow-sm'
           : 'text-gray-500 hover:text-gray-700'
       }`}
     >
       {label}
-      <span className="ml-2 text-xs text-gray-400">({count})</span>
+      <span className="ml-1.5 text-xs text-gray-400">({count})</span>
     </button>
   )
 }

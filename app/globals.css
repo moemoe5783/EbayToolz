@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  /* Safe area padding for devices with home indicator (notched/pill phones) */
+  .safe-area-pb {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

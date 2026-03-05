@@ -72,10 +72,10 @@ async function ClustersContent() {
 export default function ClustersPage() {
   return (
     <div>
-      <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="mb-4 sm:mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Clusters</h1>
-          <p className="text-gray-500 mt-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Clusters</h1>
+          <p className="text-sm text-gray-500 mt-0.5 sm:mt-1 hidden sm:block">
             eBay orders matched with their Amazon fulfillment costs.
             Amazon Visa 5% cashback applied per-order when detected.
           </p>

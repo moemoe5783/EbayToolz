@@ -9,6 +9,12 @@ export const metadata: Metadata = {
   title: 'EbayToolz — eBay Order Manager',
   description:
     'Manage your eBay selling operations in one place. Track orders, profits, and more.',
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    viewportFit: 'cover',
+  },
 }
 
 export default function RootLayout({
@@ -21,7 +27,7 @@ export default function RootLayout({
       <body className={inter.className}>
         {children}
         <Toaster
-          position="top-right"
+          position="top-center"
           richColors
           closeButton
           toastOptions={{

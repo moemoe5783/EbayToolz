@@ -15,11 +15,11 @@ export const metadata: Metadata = {
 // Loading skeleton for stats cards
 function StatsSkeleton() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-6 mb-6 sm:mb-8">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 animate-pulse">
-          <div className="h-4 bg-gray-200 rounded w-24 mb-3" />
-          <div className="h-8 bg-gray-200 rounded w-32" />
+        <div key={i} className="bg-white rounded-xl p-4 sm:p-6 shadow-sm border border-gray-100 animate-pulse">
+          <div className="h-4 bg-gray-200 rounded w-20 sm:w-24 mb-3" />
+          <div className="h-7 sm:h-8 bg-gray-200 rounded w-24 sm:w-32" />
         </div>
       ))}
     </div>
@@ -42,7 +42,7 @@ async function DashboardContent() {
     <>
       <StatsCards stats={stats} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mt-4 sm:mt-8">
         <TopItems items={stats.topItems} />
         <StaleItems items={stats.staleItems} />
       </div>
@@ -57,24 +57,24 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 mt-1">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Dashboard</h1>
+        <p className="text-sm text-gray-500 mt-0.5 sm:mt-1">
           Overview of your eBay operations
         </p>
       </div>
 
       {!ebayConnected && (
-        <div className="mb-6 flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+        <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 sm:px-5 py-3 sm:py-4">
           <div>
             <p className="text-sm font-medium text-amber-800">eBay account not connected</p>
-            <p className="text-sm text-amber-700 mt-0.5">
+            <p className="text-xs sm:text-sm text-amber-700 mt-0.5">
               Connect your eBay account to start syncing orders automatically.
             </p>
           </div>
           <Link
             href="/settings"
-            className="shrink-0 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 transition-colors"
+            className="shrink-0 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 transition-colors text-center"
           >
             Connect eBay
           </Link>
