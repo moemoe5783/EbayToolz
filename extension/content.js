@@ -429,7 +429,17 @@
   }
 
   async function autoScanOrdersList(canceledOrders) {
-    if (canceledOrders.length === 0) return
+    if (canceledOrders.length === 0) {
+      showToast('EbayToolz', 'Orders page scanned — no canceled orders found', 'info', 4000)
+      return
+    }
+
+    showToast(
+      'EbayToolz',
+      `Found ${canceledOrders.length} canceled order${canceledOrders.length > 1 ? 's' : ''}, updating…`,
+      'info',
+      60000
+    )
 
     const response = await chrome.runtime.sendMessage({
       type: 'ORDERS_LIST_SCAN',
@@ -439,9 +449,18 @@
     if (response && response.updated > 0) {
       showToast(
         'EbayToolz',
-        `${response.updated} canceled order${response.updated > 1 ? 's' : ''} updated`,
-        'info',
+        `${response.updated} canceled order${response.updated > 1 ? 's' : ''} updated in DB`,
+        'success',
         5000
+      )
+    } else if (response && response.status === 'not_logged_in') {
+      showToast('EbayToolz', 'Sign in via the extension popup first.', 'info', 6000)
+    } else {
+      showToast(
+        'EbayToolz',
+        `${canceledOrders.length} canceled order${canceledOrders.length > 1 ? 's' : ''} found — none needed updating`,
+        'info',
+        4000
       )
     }
   }
@@ -471,7 +490,9 @@
   }
 
   if (pageType === 'orders_list') {
-    // Scan for canceled orders — give Amazon's React page extra time to render
+    // Brief notice so the user knows the extension is active on this page
+    showToast('EbayToolz', 'Scanning orders for cancellations…', 'info', 3500)
+    // Give Amazon's React page extra time to render all order cards
     setTimeout(() => {
       const canceled = scrapeOrdersListPage()
       autoScanOrdersList(canceled)
