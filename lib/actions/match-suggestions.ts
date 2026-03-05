@@ -247,7 +247,7 @@ export async function getPendingSuggestions(): Promise<{
     user_id: string
     amazon_tx_id: string
     ebay_tx_id: string
-    confidence: string
+    confidence: 'medium' | 'high'
     dismissed: boolean
     created_at: string
     amazon: AmazonTransaction | null
