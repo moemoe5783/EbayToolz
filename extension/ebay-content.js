@@ -151,6 +151,7 @@
       if (el?.innerText?.trim()) {
         result.shipping_address = el.innerText
           .trim()
+          .replace(/^Ship\s+to[,:]?\s*/i, '')
           .replace(/\n{2,}/g, '\n')
           .replace(/\n/g, ', ')
         break

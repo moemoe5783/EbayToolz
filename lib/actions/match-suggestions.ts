@@ -55,13 +55,20 @@ function wordOverlap(a: string, b: string): number {
   return hits / Math.max(wordsA.length, wordsB.size)
 }
 
+/** Strip "Ship to," / "Shipping address:" label prefixes left by scrapers. */
+function stripAddressLabel(addr: string): string {
+  return addr.replace(/^(?:ship(?:ping)?\s+(?:to|address)[,:]?\s*)/i, '')
+}
+
 /** Returns 0 if zip codes are present but differ (definite non-match). */
 function addressScore(a: string, b: string): number {
+  const cleanA = stripAddressLabel(a)
+  const cleanB = stripAddressLabel(b)
   const zipRe = /\b(\d{5})(?:-\d{4})?\b/
-  const zipA = a.match(zipRe)?.[1]
-  const zipB = b.match(zipRe)?.[1]
+  const zipA = cleanA.match(zipRe)?.[1]
+  const zipB = cleanB.match(zipRe)?.[1]
   if (zipA && zipB && zipA !== zipB) return 0
-  return wordOverlap(a, b)
+  return wordOverlap(cleanA, cleanB)
 }
 
 function itemNameScore(
