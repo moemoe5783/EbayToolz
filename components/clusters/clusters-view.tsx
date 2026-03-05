@@ -132,6 +132,14 @@ export default function ClustersView({
   )
 }
 
+function ebayOrderUrl(orderId: string) {
+  return `https://www.ebay.com/sh/ord/details?orderid=${encodeURIComponent(orderId)}`
+}
+
+function amazonOrderUrl(orderId: string) {
+  return `https://www.amazon.com/gp/your-account/order-details?orderID=${encodeURIComponent(orderId)}`
+}
+
 function ClusterCard({
   cluster,
   showCalcDetails,
@@ -144,6 +152,10 @@ function ClusterCard({
   const { ebay, amazon, ebayNet, amazonCostRaw, amazonCostAdjusted, netProfit } =
     cluster
 
+  const firstItem = Array.isArray(ebay.transactions_json) ? ebay.transactions_json[0] : null
+  const extraCount = Array.isArray(ebay.transactions_json) ? ebay.transactions_json.length - 1 : 0
+  const itemTitle = firstItem?.name ?? 'Unknown item'
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
       {/* Header row */}
@@ -155,12 +167,21 @@ function ClusterCard({
           {expanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
         </button>
 
-        {/* eBay order info */}
+        {/* Main info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-sm font-medium text-gray-900">
-              {ebay.order_number}
-            </span>
+          {/* Item title */}
+          <p className="font-medium text-gray-900 truncate">
+            {itemTitle}
+            {extraCount > 0 && (
+              <span className="text-gray-400 text-sm font-normal ml-1">
+                +{extraCount} more
+              </span>
+            )}
+          </p>
+
+          {/* Meta row */}
+          <div className="flex items-center gap-x-3 gap-y-1 mt-1 flex-wrap">
+            {/* Type badge */}
             <span
               className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                 ebay.type === 'sale'
@@ -170,22 +191,50 @@ function ClusterCard({
             >
               eBay {ebay.type}
             </span>
-            {amazon.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700">
-                {amazon.length} Amazon order{amazon.length > 1 ? 's' : ''}
-              </span>
-            )}
-            {amazon.length === 0 && (
+
+            {/* eBay order link */}
+            <a
+              href={ebayOrderUrl(ebay.order_number)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-xs font-mono text-brand-600 hover:underline"
+            >
+              {ebay.order_number} ↗
+            </a>
+
+            {/* Amazon order links */}
+            {amazon.length === 0 ? (
               <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">
                 No Amazon match
               </span>
+            ) : (
+              amazon.map((amz) => (
+                <a
+                  key={amz.id}
+                  href={amazonOrderUrl(amz.order_number)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-xs font-mono text-orange-600 hover:underline"
+                >
+                  {amz.order_number} ↗
+                </a>
+              ))
+            )}
+
+            {/* Buyer */}
+            {ebay.buyer && (
+              <span className="text-xs text-gray-500">{ebay.buyer}</span>
+            )}
+
+            {/* Date */}
+            {ebay.date && (
+              <span className="text-xs text-gray-400">
+                {format(new Date(ebay.date), 'MMM d, yyyy')}
+              </span>
             )}
           </div>
-          {ebay.date && (
-            <p className="text-xs text-gray-400 mt-0.5">
-              {format(new Date(ebay.date), 'MMM d, yyyy')}
-            </p>
-          )}
         </div>
 
         {/* Profit summary */}
@@ -211,7 +260,17 @@ function ClusterCard({
                 eBay Order
               </h4>
               <div className="space-y-1.5 text-sm">
-                <Row label="Order #" value={ebay.order_number} mono />
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="text-gray-500 shrink-0">Order #</span>
+                  <a
+                    href={ebayOrderUrl(ebay.order_number)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-brand-600 hover:underline text-right"
+                  >
+                    {ebay.order_number} ↗
+                  </a>
+                </div>
                 <Row
                   label="Date"
                   value={
@@ -277,7 +336,17 @@ function ClusterCard({
                       key={amz.id}
                       className="bg-white rounded-lg border border-gray-100 p-3 space-y-1.5 text-sm"
                     >
-                      <Row label="Order #" value={amz.order_number} mono />
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <span className="text-gray-500 shrink-0">Order #</span>
+                        <a
+                          href={amazonOrderUrl(amz.order_number)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-mono text-orange-600 hover:underline text-right"
+                        >
+                          {amz.order_number} ↗
+                        </a>
+                      </div>
                       <Row label="Type" value={amz.type} />
                       {amz.used_amazon_visa && (
                         <div className="flex items-center justify-between text-xs">

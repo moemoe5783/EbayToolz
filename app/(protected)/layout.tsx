@@ -9,6 +9,10 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/layout/sidebar'
 import Navbar from '@/components/layout/navbar'
+import AutoSync from '@/components/layout/auto-sync'
+import { getEbayLastSynced } from '@/lib/ebay/tokens'
+
+const STALE_AFTER_MS = 30 * 60 * 1000 // 30 minutes
 
 export default async function ProtectedLayout({
   children,
@@ -25,8 +29,15 @@ export default async function ProtectedLayout({
     redirect('/login')
   }
 
+  const lastSynced = await getEbayLastSynced(user.id)
+  const shouldSync =
+    !lastSynced || Date.now() - lastSynced.getTime() > STALE_AFTER_MS
+
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
+      {/* Auto-sync eBay on first load or if stale */}
+      <AutoSync shouldSync={shouldSync} />
+
       {/* Sidebar */}
       <Sidebar userEmail={user.email ?? ''} />
 

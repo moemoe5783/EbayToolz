@@ -10,9 +10,10 @@ import {
   getPendingSuggestions,
 } from '@/lib/actions/match-suggestions'
 import ClustersView from '@/components/clusters/clusters-view'
+import SyncButton from '@/components/layout/sync-button'
 
 export const metadata: Metadata = {
-  title: 'Order Clusters — EbayToolz',
+  title: 'Clusters — EbayToolz',
 }
 
 function ClustersSkeleton() {
@@ -71,12 +72,15 @@ async function ClustersContent() {
 export default function ClustersPage() {
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Order Clusters</h1>
-        <p className="text-gray-500 mt-1">
-          eBay orders matched with their Amazon fulfillment costs.
-          Amazon Visa 5% cashback applied per-order when detected.
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Clusters</h1>
+          <p className="text-gray-500 mt-1">
+            eBay orders matched with their Amazon fulfillment costs.
+            Amazon Visa 5% cashback applied per-order when detected.
+          </p>
+        </div>
+        <SyncButton />
       </div>
 
       <Suspense fallback={<ClustersSkeleton />}>

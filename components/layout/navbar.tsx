@@ -13,7 +13,7 @@ import { toast } from 'sonner'
 const routeLabels: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/transactions': 'Transactions',
-  '/clusters': 'Order Clusters',
+  '/clusters': 'Clusters',
   '/settings': 'Settings',
 }
 

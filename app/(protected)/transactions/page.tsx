@@ -4,6 +4,7 @@ import { getEbayTransactions } from '@/lib/actions/ebay-transactions'
 import { getAmazonTransactions } from '@/lib/actions/amazon-transactions'
 import { getBusinessExpenses } from '@/lib/actions/business-expenses'
 import TransactionsTabs from '@/components/transactions/transactions-tabs'
+import SyncButton from '@/components/layout/sync-button'
 
 export const metadata: Metadata = {
   title: 'Transactions — EbayToolz',
@@ -48,11 +49,14 @@ async function TransactionsContent() {
 export default function TransactionsPage() {
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
-        <p className="text-gray-500 mt-1">
-          All eBay and Amazon transactions, plus business expenses
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
+          <p className="text-gray-500 mt-1">
+            All eBay and Amazon transactions, plus business expenses
+          </p>
+        </div>
+        <SyncButton />
       </div>
 
       <Suspense fallback={<TableSkeleton />}>
