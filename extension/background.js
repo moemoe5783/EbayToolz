@@ -140,6 +140,24 @@ async function refundExistsInDB(token, orderNumber) {
   }
 }
 
+// Fetch the existing DB row for an order (to check current type)
+async function fetchOrderFromDB(token, orderNumber) {
+  const userId = getUserIdFromJWT(token)
+  const url =
+    `${SUPABASE_URL}/rest/v1/amazon_transactions` +
+    `?order_number=eq.${encodeURIComponent(orderNumber)}&user_id=eq.${userId}&select=type,cost&limit=1`
+  try {
+    const res = await fetch(url, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return Array.isArray(data) && data.length > 0 ? data[0] : null
+  } catch {
+    return null
+  }
+}
+
 // ── Message handler ───────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -149,6 +167,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message.type === 'EBAY_AUTO_SAVE') {
     handleEbayAutoSave(message.data).then(sendResponse)
+    return true
+  }
+  if (message.type === 'ORDERS_LIST_SCAN') {
+    handleOrdersListScan(message.data).then(sendResponse)
     return true
   }
   if (message.type === 'REFRESH_TOKEN') {
@@ -171,30 +193,35 @@ async function handleAutoSave(orderData) {
 
   const currentType = orderData.type || 'complete'
 
-  // Refunds are separate transactions — store as "{orderNumber}-refund" so the
-  // original "complete" record stays intact and both appear in the DB.
+  // ── Refund path ──────────────────────────────────────────────────────────
+  // Refunds are stored as a separate row "{orderNumber}-refund" so the
+  // original "complete" record stays intact. We store the actual refund
+  // amount (not hard-coded 0) so cluster calculations can credit it correctly.
   if (currentType === 'refund') {
     const refundKey = `${orderNumber}-refund`
 
-    // Fast path: local memory already knows about this refund
     if (await isAlreadySynced(refundKey)) return { status: 'duplicate' }
 
-    // Slow path: DB check — catches cleared storage and records saved under the old
-    // naming convention (orderNumber directly, before the -refund suffix was introduced)
     if (await refundExistsInDB(token, orderNumber)) {
       await markSynced(refundKey, 'refund')
       return { status: 'duplicate' }
     }
 
+    // Use the scraped refund amount; fall back to the order total if the
+    // content script couldn't isolate a specific refund figure.
+    const refundAmount = orderData.total || orderData.cost || 0
+
     const refundPayload = {
       order_number: refundKey,
       date: orderData.date || new Date().toISOString(),
-      total: 0,   // refund amount is not reliably the same as the order total
-      cost: 0,
+      total: refundAmount,
+      cost: refundAmount,
       type: 'refund',
       status: orderData.status || null,
       shipping_address: orderData.shipping_address || null,
       tracking_url: orderData.tracking_url || null,
+      used_amazon_visa: orderData.used_amazon_visa ?? false,
+      items_json: orderData.items_json || [],
       corresponding_ebay_order: null,
     }
 
@@ -210,8 +237,8 @@ async function handleAutoSave(orderData) {
     return { status: 'error', error: data?.error || 'Unknown error' }
   }
 
+  // ── Already-synced path (cancel upgrade or skip) ─────────────────────────
   if (await isAlreadySynced(orderNumber)) {
-    // If the order is now canceled but was saved as something else, update the DB row
     if (currentType === 'cancel' && (await getStoredType(orderNumber)) !== 'cancel') {
       const { ok, data } = await patchTransaction(token, orderNumber, {
         status: orderData.status || null,
@@ -220,13 +247,14 @@ async function handleAutoSave(orderData) {
       })
       if (ok) {
         await markSynced(orderNumber, 'cancel')
-        return { status: 'updated' }
+        return { status: 'updated', detail: 'Marked as canceled, cost reset to $0' }
       }
       return { status: 'error', error: data?.message || 'Failed to update order' }
     }
     return { status: 'duplicate' }
   }
 
+  // ── New order path ────────────────────────────────────────────────────────
   const payload = {
     order_number: orderNumber,
     date: orderData.date || new Date().toISOString(),
@@ -236,6 +264,8 @@ async function handleAutoSave(orderData) {
     status: orderData.status || null,
     shipping_address: orderData.shipping_address || null,
     tracking_url: orderData.tracking_url || null,
+    used_amazon_visa: orderData.used_amazon_visa ?? false,
+    items_json: orderData.items_json || [],
     corresponding_ebay_order: null,
   }
 
@@ -246,13 +276,52 @@ async function handleAutoSave(orderData) {
     return { status: 'ok', data }
   }
 
-  // Server already has it (409) — mark locally so we don't retry
+  // 409 — server already has it
   if (status === 409) {
     await markSynced(orderNumber, currentType)
     return { status: 'duplicate' }
   }
 
   return { status: 'error', error: data?.error || 'Unknown error' }
+}
+
+// ── Orders list page — batch cancel scan ─────────────────────────────────
+// Called when the user visits their Amazon orders list page.
+// Finds any orders marked "Cancelled" and updates them in the DB.
+
+async function handleOrdersListScan({ canceled = [] }) {
+  const token = await getValidToken()
+  if (!token) return { status: 'not_logged_in', updated: 0 }
+  if (canceled.length === 0) return { status: 'ok', updated: 0 }
+
+  let updated = 0
+
+  for (const orderNumber of canceled) {
+    // Skip if already stored as cancel
+    const storedType = await getStoredType(orderNumber)
+    if (storedType === 'cancel') continue
+
+    // Check DB — the order may exist as 'complete' and need upgrading
+    const existing = await fetchOrderFromDB(token, orderNumber)
+    if (!existing) continue   // Not in our DB at all — can't update
+    if (existing.type === 'cancel') {
+      await markSynced(orderNumber, 'cancel')
+      continue
+    }
+
+    const { ok } = await patchTransaction(token, orderNumber, {
+      type: 'cancel',
+      cost: 0,
+      status: 'Cancelled',
+    })
+
+    if (ok) {
+      await markSynced(orderNumber, 'cancel')
+      updated++
+    }
+  }
+
+  return { status: 'ok', updated }
 }
 
 // ── eBay order syncing ─────────────────────────────────────────────────────

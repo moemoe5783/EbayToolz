@@ -5,6 +5,10 @@ import { getAllAmazonTransactions } from '@/lib/actions/amazon-transactions'
 import { getUserSettings } from '@/lib/actions/settings'
 import { getAllExpensesTotal } from '@/lib/actions/business-expenses'
 import { buildClusters } from '@/lib/utils/calculations'
+import {
+  generateMatchSuggestions,
+  getPendingSuggestions,
+} from '@/lib/actions/match-suggestions'
 import ClustersView from '@/components/clusters/clusters-view'
 
 export const metadata: Metadata = {
@@ -49,11 +53,17 @@ async function ClustersContent() {
     applyAdjustment
   )
 
+  // Run auto-match scan (idempotent — duplicates silently ignored)
+  await generateMatchSuggestions()
+
+  const { data: suggestions } = await getPendingSuggestions()
+
   return (
     <ClustersView
       clusters={clusters}
       applyAdjustment={applyAdjustment}
       totalExpenses={totalExpenses}
+      suggestions={suggestions}
     />
   )
 }
@@ -64,8 +74,8 @@ export default function ClustersPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Order Clusters</h1>
         <p className="text-gray-500 mt-1">
-          eBay orders matched with their Amazon fulfillment costs, with optional
-          5% adjustment applied
+          eBay orders matched with their Amazon fulfillment costs.
+          Amazon Visa 5% cashback applied per-order when detected.
         </p>
       </div>
 

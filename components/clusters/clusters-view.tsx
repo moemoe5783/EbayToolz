@@ -9,17 +9,21 @@ import { format } from 'date-fns'
 import { ChevronDown, ChevronRight, Info } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils/calculations'
 import type { OrderCluster } from '@/lib/types/database'
+import MatchSuggestionsBanner from '@/components/clusters/match-suggestions-banner'
+import type { SuggestionWithDetails } from '@/lib/actions/match-suggestions'
 
 interface ClustersViewProps {
   clusters: OrderCluster[]
   applyAdjustment: boolean
   totalExpenses: number
+  suggestions: SuggestionWithDetails[]
 }
 
 export default function ClustersView({
   clusters,
   applyAdjustment,
   totalExpenses,
+  suggestions,
 }: ClustersViewProps) {
   const [showCalcDetails, setShowCalcDetails] = useState(false)
 
@@ -61,7 +65,7 @@ export default function ClustersView({
               <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">
                 Total Amazon Cost{' '}
                 {applyAdjustment && (
-                  <span className="text-amber-600">(+5% adj.)</span>
+                  <span className="text-amber-600">(Visa 5% applied)</span>
                 )}
               </p>
               <p className="text-xl font-bold text-red-600 mt-0.5">
@@ -104,11 +108,17 @@ export default function ClustersView({
 
         {applyAdjustment && (
           <p className="text-xs text-amber-600 mt-3 bg-amber-50 rounded-lg px-3 py-2">
-            Amazon 5% adjustment is enabled: complete orders +5%, refund/cancel
-            orders −5% on costs. Toggle in Settings.
+            Amazon Visa 5% cashback tracking is enabled. The discount is applied
+            only to orders where the Amazon Visa card was detected at purchase.
+            Toggle in Settings.
           </p>
         )}
       </div>
+
+      {/* Pending match suggestions */}
+      {suggestions.length > 0 && (
+        <MatchSuggestionsBanner initialSuggestions={suggestions} />
+      )}
 
       {/* Cluster cards */}
       {clusters.map((cluster) => (
@@ -268,24 +278,25 @@ function ClusterCard({
                       className="bg-white rounded-lg border border-gray-100 p-3 space-y-1.5 text-sm"
                     >
                       <Row label="Order #" value={amz.order_number} mono />
-                      <Row
-                        label="Type"
-                        value={amz.type}
-                      />
+                      <Row label="Type" value={amz.type} />
+                      {amz.used_amazon_visa && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-500">Payment</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
+                            Amazon Visa (5% cashback)
+                          </span>
+                        </div>
+                      )}
                       <Row
                         label="Cost (raw)"
                         value={
                           amz.cost != null ? formatCurrency(amz.cost) : '—'
                         }
                       />
-                      {showCalcDetails && cluster.adjustmentApplied && (
+                      {showCalcDetails && cluster.adjustmentApplied && amz.used_amazon_visa && (
                         <Row
-                          label={`Cost (+5% adj.)`}
-                          value={formatCurrency(
-                            amz.type === 'complete'
-                              ? (amz.cost ?? 0) * 1.05
-                              : (amz.cost ?? 0) * 0.95
-                          )}
+                          label="Cost (after 5% cashback)"
+                          value={formatCurrency((amz.cost ?? 0) * 0.95)}
                           highlight="amber"
                         />
                       )}

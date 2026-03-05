@@ -4,9 +4,12 @@
  * An "order cluster" links one eBay sale/refund to the corresponding
  * Amazon purchase used to fulfill it (dropshipping model).
  *
- * Adjustment logic (configurable per user):
- * - 'complete' Amazon orders → add 5% to the cost (e.g. tax/fee buffer)
- * - 'refund' / 'cancel' Amazon orders → subtract 5% from the cost
+ * Adjustment logic (Amazon Visa 5% cashback, configurable per user):
+ * - Only applies to orders where `used_amazon_visa` is true AND the user
+ *   has `apply_amazon_5pct_adjustment` enabled in Settings.
+ * - 'complete' Amazon orders → cost × 0.95 (5% cashback reduces net cost)
+ * - 'refund' Amazon orders   → refund amount × 0.95 subtracted from total
+ * - 'cancel' Amazon orders   → contribute $0 to cost
  *
  * Raw transaction views always show un-adjusted values.
  * Only cluster net calculations apply the adjustment.
@@ -17,25 +20,40 @@ import type {
   OrderCluster,
 } from '@/lib/types/database'
 
-const ADJUSTMENT_RATE = 0.05 // 5%
+const CASHBACK_RATE = 0.05 // 5% Amazon Visa cashback
 
 /**
- * Compute the adjusted Amazon cost for a single Amazon transaction.
+ * Compute the adjusted Amazon cost contribution for a single transaction.
+ *
+ * Returns a signed value:
+ *   positive → adds to cluster cost (complete orders)
+ *   negative → reduces cluster cost (refund orders credit money back)
+ *   zero     → canceled orders have no cost impact
+ *
+ * The 5% adjustment is only applied when BOTH conditions are true:
+ *   1. The user has the setting enabled (`applyAdjustment`)
+ *   2. The specific order was placed with the Amazon Visa (`used_amazon_visa`)
  */
 export function computeAdjustedAmazonCost(
   tx: AmazonTransaction,
   applyAdjustment: boolean
 ): number {
   const rawCost = tx.cost ?? 0
+  const visaApplies = applyAdjustment && (tx.used_amazon_visa ?? false)
 
-  if (!applyAdjustment) return rawCost
+  if (tx.type === 'cancel') return 0
 
   if (tx.type === 'complete') {
-    return rawCost * (1 + ADJUSTMENT_RATE) // +5%
+    // Visa cashback means the effective cost is 5% less
+    return visaApplies ? rawCost * (1 - CASHBACK_RATE) : rawCost
   }
 
-  if (tx.type === 'refund' || tx.type === 'cancel') {
-    return rawCost * (1 - ADJUSTMENT_RATE) // -5%
+  if (tx.type === 'refund') {
+    // The refund amount (stored as positive in `cost`) credits back against
+    // the cluster cost.  If the original order earned Visa cashback, the
+    // cashback is reversed on return so we apply the same rate to the refund.
+    const refundValue = visaApplies ? rawCost * (1 - CASHBACK_RATE) : rawCost
+    return -refundValue // negative = reduces total amazon cost
   }
 
   return rawCost
@@ -90,7 +108,15 @@ export function buildClusters(
     }
 
     const ebayNet = ebay.net ?? 0
-    const amazonCostRaw = matched.reduce((sum, tx) => sum + (tx.cost ?? 0), 0)
+
+    // Raw cost: complete orders add, refunds subtract, cancels = 0
+    const amazonCostRaw = matched.reduce((sum, tx) => {
+      if (tx.type === 'cancel') return sum
+      if (tx.type === 'refund') return sum - (tx.cost ?? 0)
+      return sum + (tx.cost ?? 0)
+    }, 0)
+
+    // Adjusted cost: applies Visa cashback only for orders that used the card
     const amazonCostAdjusted = matched.reduce(
       (sum, tx) => sum + computeAdjustedAmazonCost(tx, applyAdjustment),
       0

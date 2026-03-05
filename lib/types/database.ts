@@ -38,6 +38,11 @@ export interface EbayTransaction {
 }
 
 // ─── Amazon Transaction ───────────────────────────────────────────────────────
+export interface AmazonItemLineItem {
+  name: string
+  qty: number
+}
+
 export interface AmazonTransaction {
   id: string
   user_id: string
@@ -49,9 +54,25 @@ export interface AmazonTransaction {
   status: string | null
   shipping_address: string | null
   tracking_url: string | null
+  /** True when the order was placed with the Amazon Visa (earns 5% cashback) */
+  used_amazon_visa: boolean
+  /** Scraped line items from the Amazon order page, used for auto-matching */
+  items_json: AmazonItemLineItem[]
   corresponding_ebay_order: string | null
   created_at: string
   updated_at: string
+}
+
+// ─── Match Suggestion ─────────────────────────────────────────────────────────
+// Auto-generated pairing candidates between unlinked Amazon and eBay orders.
+export interface MatchSuggestion {
+  id: string
+  user_id: string
+  amazon_tx_id: string
+  ebay_tx_id: string
+  confidence: 'high' | 'medium'
+  dismissed: boolean
+  created_at: string
 }
 
 // ─── Business Expense ─────────────────────────────────────────────────────────
@@ -199,6 +220,8 @@ export type Database = {
           status?: string | null
           shipping_address?: string | null
           tracking_url?: string | null
+          used_amazon_visa?: boolean
+          items_json?: AmazonItemLineItem[]
           corresponding_ebay_order?: string | null
           created_at?: string
           updated_at?: string
@@ -212,8 +235,27 @@ export type Database = {
           status?: string | null
           shipping_address?: string | null
           tracking_url?: string | null
+          used_amazon_visa?: boolean
+          items_json?: AmazonItemLineItem[]
           corresponding_ebay_order?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      match_suggestions: {
+        Row: MatchSuggestion
+        Insert: {
+          id?: string
+          user_id: string
+          amazon_tx_id: string
+          ebay_tx_id: string
+          confidence: 'high' | 'medium'
+          dismissed?: boolean
+          created_at?: string
+        }
+        Update: {
+          confidence?: 'high' | 'medium'
+          dismissed?: boolean
         }
         Relationships: []
       }

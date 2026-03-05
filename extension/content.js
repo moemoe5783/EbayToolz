@@ -18,12 +18,26 @@
       return 'order'
     }
     if (
+      href.includes('/gp/your-account/order-history') ||
+      href.includes('/your-orders/orders') ||
+      href.includes('/order-history')
+    ) {
+      return 'orders_list'
+    }
+    if (
       /\/dp\/[A-Z0-9]{10}/i.test(href) ||
       /\/gp\/product\/[A-Z0-9]{10}/i.test(href)
     ) {
       return 'product'
     }
     return 'other'
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  function parsePrice(text) {
+    const m = text.replace(/,/g, '').match(/[\d]+\.?\d*/)
+    return m ? parseFloat(m[0]) : 0
   }
 
   // ── Scraping ──────────────────────────────────────────────────────────────
@@ -40,6 +54,8 @@
       status: '',
       shipping_address: '',
       tracking_url: '',
+      used_amazon_visa: false,
+      items_json: [],
     }
 
     // Order number — URL param first, then text scan
@@ -52,8 +68,9 @@
       if (m) result.order_number = m[1]
     }
 
-    // Date
     const pageText = document.body.innerText
+
+    // Date
     const dateM = pageText.match(
       /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b/
     )
@@ -61,22 +78,15 @@
       try { result.date = new Date(dateM[0]).toISOString() } catch {}
     }
 
-    // Total
-    const totalM = pageText.match(
-      /(?:Order Total|ORDER TOTAL|Grand Total|GRAND TOTAL)[:\s]*\$?([\d,]+\.?\d*)/i
-    )
-    if (totalM) {
-      result.total = parseFloat(totalM[1].replace(/,/g, ''))
-      result.cost = result.total
-    }
-
-    // Status
+    // Status — check several known selectors
     for (const sel of [
       '.delivery-message',
       '[data-component="shipmentStatus"]',
       '.js-shipment-info-container .a-color-success',
       '.shipment-is-delivered .a-color-success',
       '.a-color-success',
+      '[class*="shipment-status"]',
+      '.order-status',
     ]) {
       const el = document.querySelector(sel)
       if (el && el.textContent.trim()) {
@@ -87,6 +97,45 @@
       }
     }
 
+    // Also scan page-level text for refund/cancel if no status element found
+    if (result.type === 'complete') {
+      if (/your\s+order\s+(has\s+been\s+)?cancel/i.test(pageText)) {
+        result.type = 'cancel'
+      } else if (/refund\s+(of|has\s+been)/i.test(pageText)) {
+        result.type = 'refund'
+      }
+    }
+
+    // Total — for refunds, try to capture the refund amount first
+    if (result.type === 'refund') {
+      // Look for explicit refund amount patterns
+      const refundPatterns = [
+        /(?:Refund Total|Refund Amount|Total Refund)[:\s]*\$?([\d,]+\.?\d*)/i,
+        /A refund of \$?([\d,]+\.?\d*)/i,
+        /refund of \$?([\d,]+\.?\d*) (?:was|has been)/i,
+        /\$?([\d,]+\.?\d*) (?:refund|was refunded)/i,
+      ]
+      for (const re of refundPatterns) {
+        const m = pageText.match(re)
+        if (m) {
+          result.total = parseFloat(m[1].replace(/,/g, ''))
+          result.cost = result.total
+          break
+        }
+      }
+    }
+
+    // Fallback / normal order total
+    if (result.total === 0) {
+      const totalM = pageText.match(
+        /(?:Order Total|ORDER TOTAL|Grand Total|GRAND TOTAL)[:\s]*\$?([\d,]+\.?\d*)/i
+      )
+      if (totalM) {
+        result.total = parseFloat(totalM[1].replace(/,/g, ''))
+        result.cost = result.total
+      }
+    }
+
     // Shipping address
     for (const sel of [
       '.displayAddressDiv',
@@ -94,6 +143,8 @@
       '[data-component="shippingAddress"]',
       '.ship-to-address',
       '.recipient',
+      '[class*="ship-to"]',
+      '[class*="shipping-address"]',
     ]) {
       const el = document.querySelector(sel)
       if (el && el.innerText.trim()) {
@@ -105,17 +156,161 @@
       }
     }
 
-    // Tracking URL
-    for (const sel of [
+    // Tracking URL — expanded selector list + text-based fallback
+    const trackingSelectors = [
       'a[href*="progress-tracker"]',
+      'a[href*="/gp/css/shiptrack"]',
       'a[href*="package/ref"]',
       'a[href*="track-package"]',
-    ]) {
+      'a[href*="tracking.ups.com"]',
+      'a[href*="tools.usps.com"]',
+      'a[href*="fedex.com/tracking"]',
+      'a[href*="dhl.com/track"]',
+      'a[href*="ontrac.com/track"]',
+      'a[href*="lasership.com/track"]',
+      '[data-action="track-package"] a',
+      '.track-package-button a',
+      'a.track-package-button',
+      'a[data-testid*="track"]',
+    ]
+    for (const sel of trackingSelectors) {
       const el = document.querySelector(sel)
       if (el && el.href) { result.tracking_url = el.href; break }
     }
 
+    // Text-based tracking link fallback — find any <a> whose text says "Track"
+    if (!result.tracking_url) {
+      const anchors = document.querySelectorAll('a[href]')
+      for (const a of anchors) {
+        const text = a.textContent.trim()
+        if (/^track\s*(package|shipment|order)?$/i.test(text) && a.href) {
+          result.tracking_url = a.href
+          break
+        }
+      }
+    }
+
+    // Amazon Visa / Prime Visa detection (payment method section)
+    const paymentSelectors = [
+      '#paymentMethod',
+      '[data-component="paymentMethod"]',
+      '.payment-info',
+      '[class*="payment"]',
+      '.pmts-account-payment-information',
+    ]
+    let paymentText = ''
+    for (const sel of paymentSelectors) {
+      const el = document.querySelector(sel)
+      if (el && el.textContent.trim()) {
+        paymentText = el.textContent
+        break
+      }
+    }
+    // Also do a broad page scan in the vicinity of "Payment" header
+    if (!paymentText) paymentText = pageText
+    result.used_amazon_visa = /amazon\s*(prime\s*)?(?:rewards\s*)?visa|prime\s*visa/i.test(paymentText)
+
+    // Item scraping — collect product names/quantities from the order
+    const itemMap = new Map() // name → qty
+
+    // Strategy 1: product title links inside shipment blocks
+    const productLinks = document.querySelectorAll(
+      '.a-col-left a[href*="/dp/"], ' +
+      '.item-view-left-col-inner a[href*="/dp/"], ' +
+      '[class*="item"] a[href*="/dp/"]'
+    )
+    for (const a of productLinks) {
+      const name = a.textContent.trim().replace(/\s+/g, ' ')
+      if (name.length > 3) {
+        // Look for quantity near this element
+        let qty = 1
+        const parent = a.closest('[class*="item"], .a-row, li')
+        if (parent) {
+          const qtyEl = parent.querySelector('[class*="qty"], [class*="quantity"]')
+          if (qtyEl) qty = parseInt(qtyEl.textContent.replace(/[^\d]/g, '')) || 1
+        }
+        itemMap.set(name, (itemMap.get(name) || 0) + qty)
+      }
+    }
+
+    // Strategy 2: Bold item titles (a-size-base-plus used heavily on order pages)
+    if (itemMap.size === 0) {
+      const titleEls = document.querySelectorAll(
+        '.a-size-base-plus.a-color-base, ' +
+        '.a-size-medium.a-color-base.a-text-bold, ' +
+        '.yohtmlc-item-title'
+      )
+      for (const el of titleEls) {
+        const name = el.textContent.trim().replace(/\s+/g, ' ')
+        if (name.length > 5 && !itemMap.has(name)) {
+          itemMap.set(name, 1)
+        }
+      }
+    }
+
+    result.items_json = [...itemMap.entries()].map(([name, qty]) => ({ name, qty }))
+
     return result
+  }
+
+  // ── Orders list page — detect canceled orders ─────────────────────────────
+
+  function scrapeOrdersListPage() {
+    const canceledOrders = []
+
+    // Each order card on the orders list page — try multiple container selectors
+    const orderContainerSelectors = [
+      '.order-card',
+      '.js-order-card',
+      '[class*="order-card"]',
+      '.order',
+      '[data-component="orderCard"]',
+    ]
+
+    let orderCards = []
+    for (const sel of orderContainerSelectors) {
+      const found = document.querySelectorAll(sel)
+      if (found.length > 0) { orderCards = [...found]; break }
+    }
+
+    // Fallback: look for order number patterns and check nearby text
+    if (orderCards.length === 0) {
+      // Broad scan: find all order numbers on page, check if the surrounding
+      // text in the same container mentions "Cancelled" / "Canceled"
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+        null
+      )
+      const orderNumberPattern = /\b(\d{3}-\d{7}-\d{7})\b/
+
+      let node
+      while ((node = walker.nextNode())) {
+        const m = node.textContent.match(orderNumberPattern)
+        if (!m) continue
+        const orderNum = m[1]
+        // Walk up to find a containing block that also has "Cancelled"
+        let el = node.parentElement
+        for (let i = 0; i < 6 && el; i++, el = el.parentElement) {
+          if (/cancell?ed/i.test(el.textContent)) {
+            canceledOrders.push(orderNum)
+            break
+          }
+        }
+      }
+      return canceledOrders
+    }
+
+    for (const card of orderCards) {
+      const text = card.textContent || ''
+      if (!/cancell?ed/i.test(text)) continue
+
+      // Extract order number from card
+      const m = text.match(/\b(\d{3}-\d{7}-\d{7})\b/)
+      if (m) canceledOrders.push(m[1])
+    }
+
+    return [...new Set(canceledOrders)] // deduplicate
   }
 
   function scrapeProductPage() {
@@ -225,13 +420,33 @@
     } else if (response.status === 'duplicate') {
       showToast('Already saved', `Order ${orderData.order_number}`, 'info', 4000)
     } else if (response.status === 'updated') {
-      showToast('Order updated', `Marked as canceled, cost reset to $0`, 'info', 5000)
+      showToast('Order updated', response.detail || 'Changes saved', 'info', 5000)
     } else if (response.status === 'refund_saved') {
-      showToast('Return saved', `Order ${orderData.order_number}`, 'success')
+      const amt = orderData.total ? ` ($${orderData.total.toFixed(2)})` : ''
+      showToast('Return saved', `Order ${orderData.order_number}${amt}`, 'success')
     } else if (response.status === 'ok') {
-      showToast('Saved to EbayToolz', `Order ${orderData.order_number}`, 'success')
+      const visa = orderData.used_amazon_visa ? ' · Visa 5%' : ''
+      showToast('Saved to EbayToolz', `Order ${orderData.order_number}${visa}`, 'success')
     } else {
       showToast('Save failed', response.error || 'Unknown error', 'error', 6000)
+    }
+  }
+
+  async function autoScanOrdersList(canceledOrders) {
+    if (canceledOrders.length === 0) return
+
+    const response = await chrome.runtime.sendMessage({
+      type: 'ORDERS_LIST_SCAN',
+      data: { canceled: canceledOrders },
+    })
+
+    if (response && response.updated > 0) {
+      showToast(
+        'EbayToolz',
+        `${response.updated} canceled order${response.updated > 1 ? 's' : ''} updated`,
+        'info',
+        5000
+      )
     }
   }
 
@@ -240,19 +455,30 @@
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type !== 'SCRAPE_PAGE') return
     const pageType = getPageType()
-    if (pageType === 'order')        sendResponse(scrapeOrderPage())
-    else if (pageType === 'product') sendResponse(scrapeProductPage())
-    else                             sendResponse({ page_type: 'other' })
+    if (pageType === 'order')            sendResponse(scrapeOrderPage())
+    else if (pageType === 'orders_list') sendResponse({ page_type: 'orders_list', canceled: scrapeOrdersListPage() })
+    else if (pageType === 'product')     sendResponse(scrapeProductPage())
+    else                                 sendResponse({ page_type: 'other' })
     return true
   })
 
-  // ── Auto-run on order pages ────────────────────────────────────────────────
+  // ── Auto-run ──────────────────────────────────────────────────────────────
 
-  if (getPageType() === 'order') {
-    // Wait a moment for dynamic content (Amazon renders some details via JS)
+  const pageType = getPageType()
+
+  if (pageType === 'order') {
+    // Wait for dynamic content (Amazon renders some details via JS)
     setTimeout(() => {
       const data = scrapeOrderPage()
       autoSaveOrder(data)
     }, 1500)
+  }
+
+  if (pageType === 'orders_list') {
+    // Scan the list page for any canceled orders and update them in the DB
+    setTimeout(() => {
+      const canceled = scrapeOrdersListPage()
+      autoScanOrdersList(canceled)
+    }, 2000)
   }
 })()

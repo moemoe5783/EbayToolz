@@ -21,6 +21,8 @@ const amazonTransactionSchema = z.object({
   status: z.string().optional().nullable(),
   shipping_address: z.string().optional().nullable(),
   tracking_url: z.string().url().optional().nullable().or(z.literal('')),
+  used_amazon_visa: z.boolean().optional().default(false),
+  items_json: z.array(z.object({ name: z.string(), qty: z.number() })).optional().default([]),
   corresponding_ebay_order: z.string().optional().nullable(),
 })
 
@@ -111,6 +113,8 @@ export async function createAmazonTransaction(
     status: formData.get('status') as string | null,
     shipping_address: formData.get('shipping_address') as string | null,
     tracking_url: (formData.get('tracking_url') as string | null) || null,
+    used_amazon_visa: formData.get('used_amazon_visa') === 'true',
+    items_json: JSON.parse((formData.get('items_json') as string) || '[]'),
     corresponding_ebay_order: formData.get(
       'corresponding_ebay_order'
     ) as string | null,
@@ -173,6 +177,8 @@ export async function updateAmazonTransaction(
     status: formData.get('status') as string | null,
     shipping_address: formData.get('shipping_address') as string | null,
     tracking_url: (formData.get('tracking_url') as string | null) || null,
+    used_amazon_visa: formData.get('used_amazon_visa') === 'true',
+    items_json: JSON.parse((formData.get('items_json') as string) || '[]'),
     corresponding_ebay_order: formData.get(
       'corresponding_ebay_order'
     ) as string | null,
