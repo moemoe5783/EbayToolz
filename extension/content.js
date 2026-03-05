@@ -274,44 +274,30 @@
   }
 
   // ── Orders list page — detect canceled orders ─────────────────────────────
-  // Amazon's orders page renders dynamically and uses inconsistent class names.
-  // The most reliable approach: read the full visible text (innerText), collect
-  // all order number positions, then check each order's OWN section for
-  // "Cancelled"/"Canceled". Bounding by the next order number prevents a
-  // cancelled order's status text from bleeding into the adjacent order.
+  // Uses DOM-based parsing: each order card is scoped individually so status
+  // text from one order can never bleed into an adjacent order.
 
   function scrapeOrdersListPage() {
-    const pageText = document.body.innerText || ''
-    if (!pageText) return []
-
     const canceledOrders = []
     const seen = new Set()
-
-    // Collect all order number positions first
-    const allMatches = []
-    const collectRe = /(\d{3}-\d{7}-\d{7})/g
-    let m
-    while ((m = collectRe.exec(pageText)) !== null) {
-      allMatches.push({ index: m.index, orderNum: m[1] })
-    }
-
-    // Pattern: "Cancelled", "Canceled", "Cancellation", "Your order was cancelled"
     const cancelPattern = /cancell?(ed|ation)/i
+    const orderNumRe = /\d{3}-\d{7}-\d{7}/
 
-    for (let i = 0; i < allMatches.length; i++) {
-      const { index, orderNum } = allMatches[i]
-      if (seen.has(orderNum)) continue
+    const cards = document.querySelectorAll('.order-card')
+    for (const card of cards) {
+      // Get order number scoped to this card
+      const orderIdEl = card.querySelector('.yohtmlc-order-id [dir="ltr"], .yohtmlc-order-id span:last-child')
+      let orderNum = orderIdEl ? orderIdEl.textContent.trim() : ''
+      if (!orderNumRe.test(orderNum)) {
+        const m = (card.innerText || '').match(orderNumRe)
+        if (m) orderNum = m[0]
+      }
+      if (!orderNum || seen.has(orderNum)) continue
       seen.add(orderNum)
 
-      // Section starts 500 chars before the order number (catches status shown
-      // above the header row) and ends where the NEXT distinct order number
-      // begins — this prevents "Cancelled" from one order bleeding into
-      // another order's section.
-      const start     = Math.max(0, index - 500)
-      const nextStart = i + 1 < allMatches.length ? allMatches[i + 1].index : pageText.length
-      const section   = pageText.slice(start, nextStart)
-
-      if (cancelPattern.test(section)) {
+      // Check only the status element inside this card
+      const statusEl = card.querySelector('.delivery-box__primary-text, .yohtmlc-shipment-status-primaryText')
+      if (statusEl && cancelPattern.test(statusEl.textContent)) {
         canceledOrders.push(orderNum)
       }
     }
