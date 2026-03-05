@@ -120,32 +120,12 @@ async function patchTransaction(token, orderNumber, fields) {
   return supabaseRequest(token, 'PATCH', qs, fields)
 }
 
-// Check DB for any existing refund row for this order, regardless of which naming
-// convention was used (old: orderNumber directly; new: orderNumber-refund).
-async function refundExistsInDB(token, orderNumber) {
-  const refundKey = `${orderNumber}-refund`
-  const url =
-    `${SUPABASE_URL}/rest/v1/amazon_transactions` +
-    `?or=(order_number.eq.${encodeURIComponent(orderNumber)},order_number.eq.${encodeURIComponent(refundKey)})` +
-    `&type=eq.refund&select=order_number&limit=1`
-  try {
-    const res = await fetch(url, {
-      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-    })
-    if (!res.ok) return false
-    const data = await res.json()
-    return Array.isArray(data) && data.length > 0
-  } catch {
-    return false
-  }
-}
-
 // Fetch the existing DB row for an order (to check current type)
 async function fetchOrderFromDB(token, orderNumber) {
   const userId = getUserIdFromJWT(token)
   const url =
     `${SUPABASE_URL}/rest/v1/amazon_transactions` +
-    `?order_number=eq.${encodeURIComponent(orderNumber)}&user_id=eq.${userId}&select=type,cost&limit=1`
+    `?order_number=eq.${encodeURIComponent(orderNumber)}&user_id=eq.${userId}&select=type,cost,status&limit=1`
   try {
     const res = await fetch(url, {
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
@@ -194,28 +174,45 @@ async function handleAutoSave(orderData) {
   const currentType = orderData.type || 'complete'
 
   // ── Refund path ──────────────────────────────────────────────────────────
-  // Refunds are stored as a separate row "{orderNumber}-refund" so the
-  // original "complete" record stays intact. We store the actual refund
-  // amount (not hard-coded 0) so cluster calculations can credit it correctly.
+  // Refunds update the EXISTING order row (same order number) rather than
+  // creating a separate record. The cost is set to the net out-of-pocket
+  // amount after the refund: 0 for a full refund, or originalCost minus the
+  // refund amount for a partial refund.
   if (currentType === 'refund') {
-    const refundKey = `${orderNumber}-refund`
-
-    if (await isAlreadySynced(refundKey)) return { status: 'duplicate' }
-
-    if (await refundExistsInDB(token, orderNumber)) {
-      await markSynced(refundKey, 'refund')
+    if (await isAlreadySynced(orderNumber) && (await getStoredType(orderNumber)) === 'refund') {
       return { status: 'duplicate' }
     }
 
-    // Use the scraped refund amount; fall back to the order total if the
-    // content script couldn't isolate a specific refund figure.
-    const refundAmount = orderData.total || orderData.cost || 0
+    // Fetch original cost so we can calculate net cost for partial refunds.
+    const existing = await fetchOrderFromDB(token, orderNumber)
+    const originalCost = existing?.cost ?? 0
 
+    // refundAmount is the money returned to the customer.
+    // If the content script captured an explicit refund figure use it;
+    // otherwise assume a full refund (cost → 0).
+    const refundAmount = orderData.total || orderData.cost || originalCost
+    const netCost = Math.max(0, originalCost - refundAmount)
+
+    if (existing) {
+      // Update the existing row
+      const { ok, data } = await patchTransaction(token, orderNumber, {
+        type: 'refund',
+        cost: netCost,
+        status: orderData.status || existing.status || null,
+      })
+      if (ok) {
+        await markSynced(orderNumber, 'refund')
+        return { status: 'refund_saved', data }
+      }
+      return { status: 'error', error: data?.message || 'Failed to update order' }
+    }
+
+    // No existing row — insert it fresh as a refunded order.
     const refundPayload = {
-      order_number: refundKey,
+      order_number: orderNumber,
       date: orderData.date || new Date().toISOString(),
-      total: refundAmount,
-      cost: refundAmount,
+      total: orderData.total || 0,
+      cost: netCost,
       type: 'refund',
       status: orderData.status || null,
       shipping_address: orderData.shipping_address || null,
@@ -224,14 +221,13 @@ async function handleAutoSave(orderData) {
       items_json: orderData.items_json || [],
       corresponding_ebay_order: null,
     }
-
     const { ok, status, data } = await postTransaction(token, refundPayload)
     if (ok) {
-      await markSynced(refundKey, 'refund')
+      await markSynced(orderNumber, 'refund')
       return { status: 'refund_saved', data }
     }
     if (status === 409) {
-      await markSynced(refundKey, 'refund')
+      await markSynced(orderNumber, 'refund')
       return { status: 'duplicate' }
     }
     return { status: 'error', error: data?.error || 'Unknown error' }

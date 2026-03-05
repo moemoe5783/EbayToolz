@@ -275,9 +275,10 @@
 
   // ── Orders list page — detect canceled orders ─────────────────────────────
   // Amazon's orders page renders dynamically and uses inconsistent class names.
-  // The most reliable approach: read the full visible text (innerText), locate
-  // every order number, then check a window of ~600 chars around it for
-  // "Cancelled"/"Canceled".  This works regardless of DOM structure.
+  // The most reliable approach: read the full visible text (innerText), collect
+  // all order number positions, then check each order's OWN section for
+  // "Cancelled"/"Canceled". Bounding by the next order number prevents a
+  // cancelled order's status text from bleeding into the adjacent order.
 
   function scrapeOrdersListPage() {
     const pageText = document.body.innerText || ''
@@ -285,28 +286,32 @@
 
     const canceledOrders = []
     const seen = new Set()
-    const orderNumRe = /(\d{3}-\d{7}-\d{7})/g
+
+    // Collect all order number positions first
+    const allMatches = []
+    const collectRe = /(\d{3}-\d{7}-\d{7})/g
+    let m
+    while ((m = collectRe.exec(pageText)) !== null) {
+      allMatches.push({ index: m.index, orderNum: m[1] })
+    }
 
     // Pattern: "Cancelled", "Canceled", "Cancellation", "Your order was cancelled"
     const cancelPattern = /cancell?(ed|ation)/i
 
-    let match
-    while ((match = orderNumRe.exec(pageText)) !== null) {
-      const orderNum = match[1]
+    for (let i = 0; i < allMatches.length; i++) {
+      const { index, orderNum } = allMatches[i]
       if (seen.has(orderNum)) continue
       seen.add(orderNum)
 
-      // Check a wide window around the order number.
-      // On Amazon's list page the item names/images appear between the order
-      // header (which has the order number) and the delivery status, so the
-      // word "Cancelled" can be 1000+ chars away from the order number.
-      // 500 chars before catches status shown above the order number line.
-      // 1500 chars after catches status shown below several item titles.
-      const start  = Math.max(0, match.index - 500)
-      const end    = Math.min(pageText.length, match.index + 1500)
-      const window = pageText.slice(start, end)
+      // Section starts 500 chars before the order number (catches status shown
+      // above the header row) and ends where the NEXT distinct order number
+      // begins — this prevents "Cancelled" from one order bleeding into
+      // another order's section.
+      const start     = Math.max(0, index - 500)
+      const nextStart = i + 1 < allMatches.length ? allMatches[i + 1].index : pageText.length
+      const section   = pageText.slice(start, nextStart)
 
-      if (cancelPattern.test(window)) {
+      if (cancelPattern.test(section)) {
         canceledOrders.push(orderNum)
       }
     }
