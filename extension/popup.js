@@ -34,7 +34,7 @@ function setLoading(btn, loading, label = 'Save to EbayToolz') {
 // ─── Auth helpers ──────────────────────────────────────────────────────────
 
 async function getValidToken() {
-  const stored = await chrome.storage.session.get(['access_token', 'expires_at'])
+  const stored = await chrome.storage.local.get(['access_token', 'expires_at'])
   if (!stored.access_token) return null
 
   // Refresh if within 5 minutes of expiry
@@ -68,10 +68,10 @@ async function signIn(email, password) {
     throw new Error(data.error_description || data.msg || 'Sign-in failed')
   }
 
-  await storeTokens({
+  await chrome.storage.local.set({
     access_token: data.access_token,
     refresh_token: data.refresh_token,
-    expires_in: data.expires_in,
+    expires_at: Date.now() + data.expires_in * 1000,
     user_email: data.user?.email ?? email,
   })
 
@@ -370,7 +370,7 @@ async function boot() {
 async function loadMain() {
   showState('loading')
 
-  const stored = await chrome.storage.session.get(['user_email'])
+  const stored = await chrome.storage.local.get(['user_email'])
   setUserEmail(stored.user_email || '')
 
   // Try Amazon first
