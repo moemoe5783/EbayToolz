@@ -191,7 +191,7 @@ export async function fetchFinanceTransactions(
 
   while (true) {
     const params = new URLSearchParams({
-      filter: `transactionDate:[${toEbayDate(dateFrom)}..${toEbayDate(new Date())}],transactionType:[SALE|REFUND]`,
+      filter: `transactionDate:[${toEbayDate(dateFrom)}..${toEbayDate(new Date())}],transactionType:{SALE|REFUND}`,
       limit: String(limit),
       offset: String(offset),
     })
