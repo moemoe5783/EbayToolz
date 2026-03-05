@@ -3,21 +3,17 @@
 /**
  * Auto-matching: link unmatched Amazon orders to eBay orders.
  *
- * Match scoring uses three signals (highest score wins):
- *   1. Order number cross-reference — if an Amazon order number appears in the
- *      eBay order's status/buyer/address text, or if a prior manual link exists
- *      pointing to the same number, score = 1.0 (instant auto-link).
- *   2. Shipping address similarity (zip code + word overlap)
- *   3. Item name similarity (word overlap between Amazon items_json and eBay transactions_json)
+ * Match logic (simple, two-signal):
+ *   1. Order number cross-reference — instant auto-link (score 1.0)
+ *   2. Recipient name match + ≥2 title words in common → auto-link (0.85)
+ *      Either signal alone → suggestion (0.50)
  *
- * Canceled Amazon orders ARE included so that a refunded eBay order can be
- * linked to its corresponding canceled Amazon fulfillment.
+ * Zip code check acts as a hard veto: if both addresses have a zip and
+ * they differ, the pair is skipped entirely.
  *
  * Thresholds:
- *   >= HIGH_THRESHOLD → auto-link (both records updated, no suggestion created)
- *   >= MED_THRESHOLD  → suggestion stored for user to confirm/dismiss
- *
- * Idempotent: duplicate suggestions silently ignored via ON CONFLICT.
+ *   >= HIGH_THRESHOLD (0.75) → auto-link
+ *   >= MED_THRESHOLD  (0.45) → suggestion
  */
 
 import { revalidatePath } from 'next/cache'
@@ -28,31 +24,17 @@ import type {
   MatchSuggestion,
 } from '@/lib/types/database'
 
-const HIGH_THRESHOLD = 0.75 // auto-link — high confidence
-const MED_THRESHOLD  = 0.40 // suggest  — medium confidence
+const HIGH_THRESHOLD = 0.75
+const MED_THRESHOLD  = 0.45
 
-// ── Fuzzy helpers ─────────────────────────────────────────────────────────
+// ── Text helpers ───────────────────────────────────────────────────────────
 
 function normalizeText(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function significantWords(text: string): string[] {
-  return normalizeText(text)
-    .split(' ')
-    .filter((w) => w.length > 2)
-}
-
-function wordOverlap(a: string, b: string): number {
-  const wordsA = significantWords(a)
-  const wordsB = new Set(significantWords(b))
-  if (wordsA.length === 0 || wordsB.size === 0) return 0
-  const hits = wordsA.filter((w) => wordsB.has(w)).length
-  return hits / Math.max(wordsA.length, wordsB.size)
+  return normalizeText(text).split(' ').filter((w) => w.length > 2)
 }
 
 /** Strip "Ship to," / "Shipping address:" label prefixes left by scrapers. */
@@ -60,41 +42,56 @@ function stripAddressLabel(addr: string): string {
   return addr.replace(/^(?:ship(?:ping)?\s+(?:to|address)[,:]?\s*)/i, '')
 }
 
-/** Returns 0 if zip codes are present but differ (definite non-match). */
-function addressScore(a: string, b: string): number {
-  const cleanA = stripAddressLabel(a)
-  const cleanB = stripAddressLabel(b)
+/**
+ * Returns false if both addresses contain a zip code and they differ (hard veto).
+ * Returns true otherwise (unknown or matching).
+ */
+function zipsCompatible(a: string, b: string): boolean {
   const zipRe = /\b(\d{5})(?:-\d{4})?\b/
-  const zipA = cleanA.match(zipRe)?.[1]
-  const zipB = cleanB.match(zipRe)?.[1]
-  if (zipA && zipB && zipA !== zipB) return 0
-  return wordOverlap(cleanA, cleanB)
-}
-
-function itemNameScore(
-  amazonItems: Array<{ name: string; qty: number }>,
-  ebayItems: Array<{ name: string; qty: number; price: number; sku?: string }>
-): number {
-  if (amazonItems.length === 0 || ebayItems.length === 0) return 0
-  let best = 0
-  for (const a of amazonItems) {
-    for (const e of ebayItems) {
-      best = Math.max(best, wordOverlap(a.name, e.name))
-    }
-  }
-  return best
+  const za = a.match(zipRe)?.[1]
+  const zb = b.match(zipRe)?.[1]
+  return !(za && zb && za !== zb)
 }
 
 /**
- * Check if the Amazon order number appears anywhere in the eBay order's
- * text fields (status, buyer, shipping address, item names).
- * If so, it's an unambiguous match — score 1.0.
+ * Name match: at least one significant word from the recipient name
+ * (first line of the shipping address) appears in the other address's first line.
+ */
+function nameMatch(addrA: string, addrB: string): boolean {
+  const firstName = (addr: string) =>
+    stripAddressLabel(addr).split(/[\n,]/)[0].trim()
+  const na = significantWords(firstName(addrA))
+  const nb = new Set(significantWords(firstName(addrB)))
+  return na.length > 0 && na.some((w) => nb.has(w))
+}
+
+/**
+ * Title match: at least 2 significant words shared between any Amazon item
+ * name and any eBay item name.
+ */
+function titleMatch(
+  amazonItems: Array<{ name: string; qty: number }>,
+  ebayItems:   Array<{ name: string; qty: number; price: number; sku?: string }>
+): boolean {
+  for (const a of amazonItems) {
+    const wordsA = significantWords(a.name)
+    for (const e of ebayItems) {
+      const wordsB = new Set(significantWords(e.name))
+      const hits = wordsA.filter((w) => wordsB.has(w)).length
+      if (hits >= 2) return true
+    }
+  }
+  return false
+}
+
+/**
+ * Check if the Amazon order number appears anywhere in the eBay order's text.
  */
 function orderNumberCrossReference(
   amazon: AmazonTransaction,
   ebay: EbayTransaction
 ): boolean {
-  const amzNum = amazon.order_number.replace(/-refund$/, '') // strip -refund suffix
+  const amzNum = amazon.order_number.replace(/-refund$/, '')
   const haystack = [
     ebay.status ?? '',
     ebay.buyer ?? '',
@@ -108,24 +105,28 @@ function computeMatchScore(
   amazon: AmazonTransaction,
   ebay: EbayTransaction
 ): number {
-  // Order number appearing in the eBay record = definitive match
   if (orderNumberCrossReference(amazon, ebay)) return 1.0
 
-  const scores: number[] = []
-
-  if (amazon.shipping_address && ebay.shipping_address) {
-    scores.push(addressScore(amazon.shipping_address, ebay.shipping_address))
-  }
-
+  // Hard veto: zip codes both present and different → no match
   if (
+    amazon.shipping_address && ebay.shipping_address &&
+    !zipsCompatible(amazon.shipping_address, ebay.shipping_address)
+  ) return 0
+
+  const nm =
+    amazon.shipping_address && ebay.shipping_address
+      ? nameMatch(amazon.shipping_address, ebay.shipping_address)
+      : false
+
+  const tm =
     Array.isArray(amazon.items_json) && amazon.items_json.length > 0 &&
     Array.isArray(ebay.transactions_json) && ebay.transactions_json.length > 0
-  ) {
-    scores.push(itemNameScore(amazon.items_json, ebay.transactions_json))
-  }
+      ? titleMatch(amazon.items_json, ebay.transactions_json)
+      : false
 
-  if (scores.length === 0) return 0
-  return scores.reduce((s, v) => s + v, 0) / scores.length
+  if (nm && tm) return 0.85  // name + title → auto-link
+  if (nm || tm) return 0.50  // one signal  → suggest
+  return 0
 }
 
 // ── Main: generate suggestions + auto-links ───────────────────────────────
