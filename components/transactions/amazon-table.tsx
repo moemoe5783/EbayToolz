@@ -147,7 +147,12 @@ export default function AmazonTransactionsTable({
           </span>
         ),
         cell: (info) => (
-          <span className="text-sm text-gray-500">{info.getValue() ?? '—'}</span>
+          <span
+            className="text-sm text-gray-500 block truncate max-w-[200px]"
+            title={info.getValue() ?? undefined}
+          >
+            {info.getValue() ?? '—'}
+          </span>
         ),
       }),
       columnHelper.accessor('tracking_url', {

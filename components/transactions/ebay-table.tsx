@@ -156,7 +156,12 @@ export default function EbayTransactionsTable({
           </span>
         ),
         cell: (info) => (
-          <span className="text-sm text-gray-500">{info.getValue() ?? '—'}</span>
+          <span
+            className="text-sm text-gray-500 block truncate max-w-[200px]"
+            title={info.getValue() ?? undefined}
+          >
+            {info.getValue() ?? '—'}
+          </span>
         ),
       }),
       columnHelper.accessor('corresponding_amazon_order', {
