@@ -156,11 +156,28 @@
       }
     }
 
-    // Tracking URL — expanded selector list + text-based fallback
+    // Tracking URL — must look like a real tracking URL, never a cancel link
+    function isTrackingHref(href) {
+      if (!href || /cancel/i.test(href)) return false
+      return (
+        /progress.tracker/i.test(href) ||
+        /\/gp\/css\/shiptrack/i.test(href) ||
+        /track.package/i.test(href) ||
+        /package\/ref=/i.test(href) ||
+        /tracking\.ups\.com/i.test(href) ||
+        /tools\.usps\.com/i.test(href) ||
+        /fedex\.com\/tracking/i.test(href) ||
+        /dhl\.com\/track/i.test(href) ||
+        /ontrac\.com\/track/i.test(href) ||
+        /lasership\.com\/track/i.test(href) ||
+        /epiqsciences\.com\/track/i.test(href) ||
+        /amazon\.com\/.*track/i.test(href)
+      )
+    }
+
     const trackingSelectors = [
       'a[href*="progress-tracker"]',
       'a[href*="/gp/css/shiptrack"]',
-      'a[href*="package/ref"]',
       'a[href*="track-package"]',
       'a[href*="tracking.ups.com"]',
       'a[href*="tools.usps.com"]',
@@ -175,15 +192,18 @@
     ]
     for (const sel of trackingSelectors) {
       const el = document.querySelector(sel)
-      if (el && el.href) { result.tracking_url = el.href; break }
+      if (el && isTrackingHref(el.href)) { result.tracking_url = el.href; break }
     }
 
-    // Text-based tracking link fallback — find any <a> whose text says "Track"
+    // Text-based fallback — find any visible "Track package" link, validate href
     if (!result.tracking_url) {
       const anchors = document.querySelectorAll('a[href]')
       for (const a of anchors) {
         const text = a.textContent.trim()
-        if (/^track\s*(package|shipment|order)?$/i.test(text) && a.href) {
+        if (
+          /^track\s*(package|shipment|order)?$/i.test(text) &&
+          isTrackingHref(a.href)
+        ) {
           result.tracking_url = a.href
           break
         }
@@ -254,63 +274,39 @@
   }
 
   // ── Orders list page — detect canceled orders ─────────────────────────────
+  // Amazon's orders page renders dynamically and uses inconsistent class names.
+  // The most reliable approach: read the full visible text (innerText), locate
+  // every order number, then check a window of ~600 chars around it for
+  // "Cancelled"/"Canceled".  This works regardless of DOM structure.
 
   function scrapeOrdersListPage() {
+    const pageText = document.body.innerText || ''
+    if (!pageText) return []
+
     const canceledOrders = []
+    const seen = new Set()
+    const orderNumRe = /(\d{3}-\d{7}-\d{7})/g
 
-    // Each order card on the orders list page — try multiple container selectors
-    const orderContainerSelectors = [
-      '.order-card',
-      '.js-order-card',
-      '[class*="order-card"]',
-      '.order',
-      '[data-component="orderCard"]',
-    ]
+    let match
+    while ((match = orderNumRe.exec(pageText)) !== null) {
+      const orderNum = match[1]
+      if (seen.has(orderNum)) continue
+      seen.add(orderNum)
 
-    let orderCards = []
-    for (const sel of orderContainerSelectors) {
-      const found = document.querySelectorAll(sel)
-      if (found.length > 0) { orderCards = [...found]; break }
-    }
+      // Check text within 300 chars before and 600 chars after the order number.
+      // "Cancelled" typically appears in the delivery status line which is
+      // rendered close to (but not necessarily inside the same element as)
+      // the order number.
+      const start = Math.max(0, match.index - 300)
+      const end   = Math.min(pageText.length, match.index + 600)
+      const window = pageText.slice(start, end)
 
-    // Fallback: look for order number patterns and check nearby text
-    if (orderCards.length === 0) {
-      // Broad scan: find all order numbers on page, check if the surrounding
-      // text in the same container mentions "Cancelled" / "Canceled"
-      const walker = document.createTreeWalker(
-        document.body,
-        NodeFilter.SHOW_TEXT,
-        null
-      )
-      const orderNumberPattern = /\b(\d{3}-\d{7}-\d{7})\b/
-
-      let node
-      while ((node = walker.nextNode())) {
-        const m = node.textContent.match(orderNumberPattern)
-        if (!m) continue
-        const orderNum = m[1]
-        // Walk up to find a containing block that also has "Cancelled"
-        let el = node.parentElement
-        for (let i = 0; i < 6 && el; i++, el = el.parentElement) {
-          if (/cancell?ed/i.test(el.textContent)) {
-            canceledOrders.push(orderNum)
-            break
-          }
-        }
+      if (/cancell?ed/i.test(window)) {
+        canceledOrders.push(orderNum)
       }
-      return canceledOrders
     }
 
-    for (const card of orderCards) {
-      const text = card.textContent || ''
-      if (!/cancell?ed/i.test(text)) continue
-
-      // Extract order number from card
-      const m = text.match(/\b(\d{3}-\d{7}-\d{7})\b/)
-      if (m) canceledOrders.push(m[1])
-    }
-
-    return [...new Set(canceledOrders)] // deduplicate
+    return canceledOrders
   }
 
   function scrapeProductPage() {
@@ -475,10 +471,10 @@
   }
 
   if (pageType === 'orders_list') {
-    // Scan the list page for any canceled orders and update them in the DB
+    // Scan for canceled orders — give Amazon's React page extra time to render
     setTimeout(() => {
       const canceled = scrapeOrdersListPage()
       autoScanOrdersList(canceled)
-    }, 2000)
+    }, 4000)
   }
 })()
