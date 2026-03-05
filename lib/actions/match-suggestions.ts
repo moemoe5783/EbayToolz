@@ -255,7 +255,9 @@ export async function getPendingSuggestions(): Promise<{
   }
 
   const results: SuggestionWithDetails[] = ((data ?? []) as SuggestionRow[])
-    .filter((row) => row.amazon && row.ebay)
+    .filter((row): row is SuggestionRow & { amazon: AmazonTransaction; ebay: EbayTransaction } =>
+      row.amazon !== null && row.ebay !== null
+    )
     .map((row) => ({
       suggestion: {
         id: row.id,
