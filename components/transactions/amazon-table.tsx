@@ -2,6 +2,7 @@
 
 /**
  * Amazon transactions data table with sorting, delete, and edit actions.
+ * Desktop: TanStack Table. Mobile: card list.
  */
 import { useMemo, useTransition } from 'react'
 import {
@@ -22,6 +23,24 @@ import type { AmazonTransaction } from '@/lib/types/database'
 
 const columnHelper = createColumnHelper<AmazonTransaction>()
 
+// ─── Type badge ───────────────────────────────────────────────────────────────
+
+function AmazonTypeBadge({ type }: { type: AmazonTransaction['type'] }) {
+  const map = {
+    complete: 'bg-green-100 text-green-700',
+    refund:   'bg-amber-100 text-amber-700',
+    cancel:   'bg-red-100 text-red-700',
+  } as const
+  const labels = { complete: 'Complete', refund: 'Refund', cancel: 'Cancelled' }
+  return (
+    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${map[type]}`}>
+      {labels[type]}
+    </span>
+  )
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
 interface AmazonTransactionsTableProps {
   transactions: AmazonTransaction[]
   onEdit: (tx: AmazonTransaction) => void
@@ -38,18 +57,13 @@ export default function AmazonTransactionsTable({
   const [, startTransition] = useTransition()
 
   function handleDelete(id: string) {
-    if (!confirm('Delete this Amazon transaction? This cannot be undone.'))
-      return
-
+    if (!confirm('Delete this Amazon transaction? This cannot be undone.')) return
     setDeletingId(id)
     startTransition(async () => {
       const result = await deleteAmazonTransaction(id)
       setDeletingId(null)
-      if (result.error) {
-        toast.error(result.error)
-      } else {
-        toast.success('Transaction deleted.')
-      }
+      if (result.error) toast.error(result.error)
+      else toast.success('Transaction deleted.')
     })
   }
 
@@ -59,17 +73,13 @@ export default function AmazonTransactionsTable({
         header: ({ column }) => (
           <button
             className="flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wide hover:text-gray-700"
-            onClick={() =>
-              column.toggleSorting(column.getIsSorted() === 'asc')
-            }
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           >
             Date <ArrowUpDown size={12} />
           </button>
         ),
         cell: (info) =>
-          info.getValue()
-            ? format(new Date(info.getValue()!), 'MMM d, yyyy')
-            : '—',
+          info.getValue() ? format(new Date(info.getValue()!), 'MMM d, yyyy') : '—',
       }),
       columnHelper.accessor('order_number', {
         header: () => (
@@ -78,9 +88,7 @@ export default function AmazonTransactionsTable({
           </span>
         ),
         cell: (info) => (
-          <span className="font-mono text-xs text-gray-700">
-            {info.getValue()}
-          </span>
+          <span className="font-mono text-xs text-gray-700">{info.getValue()}</span>
         ),
       }),
       columnHelper.accessor('type', {
@@ -89,30 +97,13 @@ export default function AmazonTransactionsTable({
             Type
           </span>
         ),
-        cell: (info) => {
-          const type = info.getValue()
-          return (
-            <span
-              className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                type === 'complete'
-                  ? 'bg-green-100 text-green-700'
-                  : type === 'refund'
-                  ? 'bg-amber-100 text-amber-700'
-                  : 'bg-red-100 text-red-700'
-              }`}
-            >
-              {type}
-            </span>
-          )
-        },
+        cell: (info) => <AmazonTypeBadge type={info.getValue()} />,
       }),
       columnHelper.accessor('total', {
         header: ({ column }) => (
           <button
             className="flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wide hover:text-gray-700"
-            onClick={() =>
-              column.toggleSorting(column.getIsSorted() === 'asc')
-            }
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           >
             Total <ArrowUpDown size={12} />
           </button>
@@ -124,18 +115,14 @@ export default function AmazonTransactionsTable({
         header: ({ column }) => (
           <button
             className="flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wide hover:text-gray-700"
-            onClick={() =>
-              column.toggleSorting(column.getIsSorted() === 'asc')
-            }
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           >
             Cost <ArrowUpDown size={12} />
           </button>
         ),
         cell: (info) =>
           info.getValue() != null ? (
-            <span className="text-red-600">
-              {formatCurrency(info.getValue()!)}
-            </span>
+            <span className="text-red-600">{formatCurrency(info.getValue()!)}</span>
           ) : (
             '—'
           ),
@@ -182,9 +169,7 @@ export default function AmazonTransactionsTable({
           </span>
         ),
         cell: (info) => (
-          <span className="font-mono text-xs text-gray-500">
-            {info.getValue() ?? '—'}
-          </span>
+          <span className="font-mono text-xs text-gray-500">{info.getValue() ?? '—'}</span>
         ),
       }),
       columnHelper.display({
@@ -249,20 +234,81 @@ export default function AmazonTransactionsTable({
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="overflow-x-auto">
+      {/* ── Mobile card list ─────────────────────────────────────────── */}
+      <ul className="md:hidden divide-y divide-gray-100">
+        {transactions.map((tx) => (
+          <li key={tx.id} className="px-4 py-3.5">
+            {/* Row 1: order + date */}
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="font-mono text-xs text-gray-500 truncate">{tx.order_number}</span>
+              <span className="text-xs text-gray-400 shrink-0">
+                {tx.date ? format(new Date(tx.date), 'MMM d, yyyy') : '—'}
+              </span>
+            </div>
+
+            {/* Row 2: type badge + cost */}
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <AmazonTypeBadge type={tx.type} />
+              <span className="text-sm font-semibold text-red-600">
+                {tx.cost != null ? formatCurrency(tx.cost) : tx.total != null ? formatCurrency(tx.total) : '—'}
+              </span>
+            </div>
+
+            {/* Row 3: ebay link + tracking + actions */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3 text-xs text-gray-400 min-w-0">
+                {tx.corresponding_ebay_order && (
+                  <span className="font-mono truncate">{tx.corresponding_ebay_order}</span>
+                )}
+                {tx.tracking_url && (
+                  <a
+                    href={tx.tracking_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-0.5 text-brand-600"
+                  >
+                    Track <ExternalLink size={10} />
+                  </a>
+                )}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => onMarkAsExpense(tx)}
+                  className="p-1.5 text-gray-400 hover:text-orange-500 transition-colors"
+                  title="Mark as business expense"
+                >
+                  <Receipt size={14} />
+                </button>
+                <button
+                  onClick={() => onEdit(tx)}
+                  className="p-1.5 text-gray-400 hover:text-brand-600 transition-colors"
+                  title="Edit"
+                >
+                  <Pencil size={14} />
+                </button>
+                <button
+                  onClick={() => handleDelete(tx.id)}
+                  disabled={deletingId === tx.id}
+                  className="p-1.5 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-40"
+                  title="Delete"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {/* ── Desktop table ────────────────────────────────────────────── */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    className="text-left px-4 py-3 whitespace-nowrap"
-                  >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext()
-                    )}
+                  <th key={header.id} className="text-left px-4 py-3 whitespace-nowrap">
+                    {flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
                 ))}
               </tr>
@@ -273,10 +319,7 @@ export default function AmazonTransactionsTable({
               <tr key={row.id} className="hover:bg-gray-50 transition-colors">
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="px-4 py-3 whitespace-nowrap">
-                    {flexRender(
-                      cell.column.columnDef.cell,
-                      cell.getContext()
-                    )}
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
               </tr>

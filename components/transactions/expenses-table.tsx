@@ -2,6 +2,7 @@
 
 /**
  * Business expenses data table with sorting, delete, and edit actions.
+ * Desktop: TanStack Table. Mobile: card list.
  */
 import { useMemo, useTransition, useState } from 'react'
 import {
@@ -21,10 +22,7 @@ import type { BusinessExpense } from '@/lib/types/database'
 
 const columnHelper = createColumnHelper<BusinessExpense>()
 
-const CATEGORY_STYLES: Record<
-  string,
-  { label: string; className: string }
-> = {
+const CATEGORY_STYLES: Record<string, { label: string; className: string }> = {
   amazon_order:  { label: 'Amazon Order',  className: 'bg-orange-100 text-orange-700' },
   software:      { label: 'Software',      className: 'bg-blue-100 text-blue-700' },
   subscription:  { label: 'Subscription',  className: 'bg-purple-100 text-purple-700' },
@@ -34,31 +32,33 @@ const CATEGORY_STYLES: Record<
   other:         { label: 'Other',         className: 'bg-gray-100 text-gray-600' },
 }
 
+function CategoryBadge({ category }: { category: string }) {
+  const style = CATEGORY_STYLES[category] ?? CATEGORY_STYLES.other
+  return (
+    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${style.className}`}>
+      {style.label}
+    </span>
+  )
+}
+
 interface ExpensesTableProps {
   expenses: BusinessExpense[]
   onEdit: (expense: BusinessExpense) => void
 }
 
-export default function ExpensesTable({
-  expenses,
-  onEdit,
-}: ExpensesTableProps) {
+export default function ExpensesTable({ expenses, onEdit }: ExpensesTableProps) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 
   function handleDelete(id: string) {
     if (!confirm('Delete this expense? This cannot be undone.')) return
-
     setDeletingId(id)
     startTransition(async () => {
       const result = await deleteBusinessExpense(id)
       setDeletingId(null)
-      if (result.error) {
-        toast.error(result.error)
-      } else {
-        toast.success('Expense deleted.')
-      }
+      if (result.error) toast.error(result.error)
+      else toast.success('Expense deleted.')
     })
   }
 
@@ -68,17 +68,13 @@ export default function ExpensesTable({
         header: ({ column }) => (
           <button
             className="flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wide hover:text-gray-700"
-            onClick={() =>
-              column.toggleSorting(column.getIsSorted() === 'asc')
-            }
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           >
             Date <ArrowUpDown size={12} />
           </button>
         ),
         cell: (info) =>
-          info.getValue()
-            ? format(new Date(info.getValue()), 'MMM d, yyyy')
-            : '—',
+          info.getValue() ? format(new Date(info.getValue()), 'MMM d, yyyy') : '—',
       }),
       columnHelper.accessor('description', {
         header: () => (
@@ -96,25 +92,13 @@ export default function ExpensesTable({
             Category
           </span>
         ),
-        cell: (info) => {
-          const cat = info.getValue()
-          const style = CATEGORY_STYLES[cat] ?? CATEGORY_STYLES.other
-          return (
-            <span
-              className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${style.className}`}
-            >
-              {style.label}
-            </span>
-          )
-        },
+        cell: (info) => <CategoryBadge category={info.getValue()} />,
       }),
       columnHelper.accessor('amount', {
         header: ({ column }) => (
           <button
             className="flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wide hover:text-gray-700"
-            onClick={() =>
-              column.toggleSorting(column.getIsSorted() === 'asc')
-            }
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           >
             Amount <ArrowUpDown size={12} />
           </button>
@@ -206,20 +190,68 @@ export default function ExpensesTable({
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="overflow-x-auto">
+      {/* ── Mobile card list ─────────────────────────────────────────── */}
+      <ul className="md:hidden divide-y divide-gray-100">
+        {expenses.map((expense) => (
+          <li key={expense.id} className="px-4 py-3.5">
+            {/* Row 1: description + date */}
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <span className="text-sm font-medium text-gray-900 leading-tight">
+                {expense.description}
+              </span>
+              <span className="text-xs text-gray-400 shrink-0 pt-0.5">
+                {expense.date ? format(new Date(expense.date), 'MMM d, yyyy') : '—'}
+              </span>
+            </div>
+
+            {/* Row 2: category + amount */}
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <CategoryBadge category={expense.category} />
+              <span className="text-sm font-semibold text-red-600">
+                −{formatCurrency(expense.amount)}
+              </span>
+            </div>
+
+            {/* Row 3: notes / amazon order + actions */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs text-gray-400 min-w-0 truncate">
+                {expense.amazon_order_number ? (
+                  <span className="font-mono">{expense.amazon_order_number}</span>
+                ) : expense.notes ? (
+                  <span>{expense.notes}</span>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => onEdit(expense)}
+                  className="p-1.5 text-gray-400 hover:text-brand-600 transition-colors"
+                  title="Edit"
+                >
+                  <Pencil size={14} />
+                </button>
+                <button
+                  onClick={() => handleDelete(expense.id)}
+                  disabled={deletingId === expense.id}
+                  className="p-1.5 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-40"
+                  title="Delete"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {/* ── Desktop table ────────────────────────────────────────────── */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    className="text-left px-4 py-3 whitespace-nowrap"
-                  >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext()
-                    )}
+                  <th key={header.id} className="text-left px-4 py-3 whitespace-nowrap">
+                    {flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
                 ))}
               </tr>
@@ -230,10 +262,7 @@ export default function ExpensesTable({
               <tr key={row.id} className="hover:bg-gray-50 transition-colors">
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="px-4 py-3 whitespace-nowrap">
-                    {flexRender(
-                      cell.column.columnDef.cell,
-                      cell.getContext()
-                    )}
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
               </tr>
@@ -243,12 +272,8 @@ export default function ExpensesTable({
       </div>
 
       <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
-        <span>
-          {expenses.length} expense{expenses.length !== 1 ? 's' : ''}
-        </span>
-        <span className="font-medium text-red-500">
-          Total: −{formatCurrency(totalAmount)}
-        </span>
+        <span>{expenses.length} expense{expenses.length !== 1 ? 's' : ''}</span>
+        <span className="font-medium text-red-500">Total: −{formatCurrency(totalAmount)}</span>
       </div>
     </div>
   )
