@@ -287,21 +287,26 @@
     const seen = new Set()
     const orderNumRe = /(\d{3}-\d{7}-\d{7})/g
 
+    // Pattern: "Cancelled", "Canceled", "Cancellation", "Your order was cancelled"
+    const cancelPattern = /cancell?(ed|ation)/i
+
     let match
     while ((match = orderNumRe.exec(pageText)) !== null) {
       const orderNum = match[1]
       if (seen.has(orderNum)) continue
       seen.add(orderNum)
 
-      // Check text within 300 chars before and 600 chars after the order number.
-      // "Cancelled" typically appears in the delivery status line which is
-      // rendered close to (but not necessarily inside the same element as)
-      // the order number.
-      const start = Math.max(0, match.index - 300)
-      const end   = Math.min(pageText.length, match.index + 600)
+      // Check a wide window around the order number.
+      // On Amazon's list page the item names/images appear between the order
+      // header (which has the order number) and the delivery status, so the
+      // word "Cancelled" can be 1000+ chars away from the order number.
+      // 500 chars before catches status shown above the order number line.
+      // 1500 chars after catches status shown below several item titles.
+      const start  = Math.max(0, match.index - 500)
+      const end    = Math.min(pageText.length, match.index + 1500)
       const window = pageText.slice(start, end)
 
-      if (/cancell?ed/i.test(window)) {
+      if (cancelPattern.test(window)) {
         canceledOrders.push(orderNum)
       }
     }

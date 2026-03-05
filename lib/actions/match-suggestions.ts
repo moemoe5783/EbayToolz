@@ -3,17 +3,21 @@
 /**
  * Auto-matching: link unmatched Amazon orders to eBay orders.
  *
- * Match scoring uses two signals:
- *   1. Shipping address similarity (zip code + word overlap)
- *   2. Item name similarity (word overlap between Amazon items_json and eBay transactions_json)
+ * Match scoring uses three signals (highest score wins):
+ *   1. Order number cross-reference — if an Amazon order number appears in the
+ *      eBay order's status/buyer/address text, or if a prior manual link exists
+ *      pointing to the same number, score = 1.0 (instant auto-link).
+ *   2. Shipping address similarity (zip code + word overlap)
+ *   3. Item name similarity (word overlap between Amazon items_json and eBay transactions_json)
+ *
+ * Canceled Amazon orders ARE included so that a refunded eBay order can be
+ * linked to its corresponding canceled Amazon fulfillment.
  *
  * Thresholds:
  *   >= HIGH_THRESHOLD → auto-link (both records updated, no suggestion created)
  *   >= MED_THRESHOLD  → suggestion stored for user to confirm/dismiss
  *
- * The function is idempotent: duplicate suggestions are silently ignored
- * via ON CONFLICT DO NOTHING (the table has a UNIQUE constraint on
- * amazon_tx_id + ebay_tx_id).
+ * Idempotent: duplicate suggestions silently ignored via ON CONFLICT.
  */
 
 import { revalidatePath } from 'next/cache'
@@ -74,10 +78,32 @@ function itemNameScore(
   return best
 }
 
+/**
+ * Check if the Amazon order number appears anywhere in the eBay order's
+ * text fields (status, buyer, shipping address, item names).
+ * If so, it's an unambiguous match — score 1.0.
+ */
+function orderNumberCrossReference(
+  amazon: AmazonTransaction,
+  ebay: EbayTransaction
+): boolean {
+  const amzNum = amazon.order_number.replace(/-refund$/, '') // strip -refund suffix
+  const haystack = [
+    ebay.status ?? '',
+    ebay.buyer ?? '',
+    ebay.shipping_address ?? '',
+    ...(ebay.transactions_json ?? []).map((i) => i.name),
+  ].join(' ')
+  return haystack.includes(amzNum)
+}
+
 function computeMatchScore(
   amazon: AmazonTransaction,
   ebay: EbayTransaction
 ): number {
+  // Order number appearing in the eBay record = definitive match
+  if (orderNumberCrossReference(amazon, ebay)) return 1.0
+
   const scores: number[] = []
 
   if (amazon.shipping_address && ebay.shipping_address) {
@@ -106,12 +132,12 @@ export async function generateMatchSuggestions(): Promise<{
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { autoLinked: 0, suggested: 0, error: 'Not authenticated' }
 
-  // Load all unlinked Amazon orders (complete or refund — not cancel)
+  // Include ALL unlinked Amazon orders — complete, refund, AND cancel.
+  // A canceled Amazon order should still be linkable to a refunded eBay order.
   const { data: amazonTxs, error: aErr } = await supabase
     .from('amazon_transactions')
     .select('*')
     .is('corresponding_ebay_order', null)
-    .neq('type', 'cancel')
 
   if (aErr) return { autoLinked: 0, suggested: 0, error: aErr.message }
 
@@ -130,13 +156,10 @@ export async function generateMatchSuggestions(): Promise<{
   let autoLinked = 0
   let suggested = 0
 
-  // Track which IDs have already been auto-linked this run so we don't
-  // double-match them when iterating over remaining combinations.
   const linkedAmazonIds = new Set<string>()
   const linkedEbayIds   = new Set<string>()
 
-  // Gather all (score, amazon, ebay) triples, then process highest first
-  // so we resolve unambiguous best matches before lower-confidence ones.
+  // Score all pairs and sort highest first so best matches claim their IDs first
   const candidates: Array<{ score: number; amazon: AmazonTransaction; ebay: EbayTransaction }> = []
 
   for (const amazon of amazonTxs) {
@@ -148,14 +171,12 @@ export async function generateMatchSuggestions(): Promise<{
     }
   }
 
-  // Sort descending by score
   candidates.sort((a, b) => b.score - a.score)
 
   for (const { score, amazon, ebay } of candidates) {
     if (linkedAmazonIds.has(amazon.id) || linkedEbayIds.has(ebay.id)) continue
 
     if (score >= HIGH_THRESHOLD) {
-      // Auto-link both sides
       const [aRes, eRes] = await Promise.all([
         supabase
           .from('amazon_transactions')
@@ -172,7 +193,6 @@ export async function generateMatchSuggestions(): Promise<{
         autoLinked++
       }
     } else {
-      // Suggest — insert with ON CONFLICT DO NOTHING via upsert ignore
       const { error } = await supabase.from('match_suggestions').upsert(
         {
           user_id: user.id,
@@ -194,6 +214,7 @@ export async function generateMatchSuggestions(): Promise<{
 
   return { autoLinked, suggested }
 }
+
 
 // ── Load pending suggestions ──────────────────────────────────────────────
 
