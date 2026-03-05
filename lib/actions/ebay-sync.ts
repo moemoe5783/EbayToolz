@@ -124,7 +124,8 @@ export async function syncEbayOrdersForUser(
       buyer: buyerName,
       shipping_address: formatShipAddress(o) || null,
       transactions_json: lineItems,
-      corresponding_amazon_order: null,
+      // corresponding_amazon_order is intentionally omitted — upsert must
+      // never overwrite an existing manual or auto-generated link.
     }
   })
 
