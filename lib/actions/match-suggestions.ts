@@ -242,9 +242,21 @@ export async function getPendingSuggestions(): Promise<{
 
   if (error) return { data: [], error: error.message }
 
-  const results: SuggestionWithDetails[] = (data ?? [])
-    .filter((row: any) => row.amazon && row.ebay)
-    .map((row: any) => ({
+  type SuggestionRow = {
+    id: string
+    user_id: string
+    amazon_tx_id: string
+    ebay_tx_id: string
+    confidence: string
+    dismissed: boolean
+    created_at: string
+    amazon: AmazonTransaction | null
+    ebay: EbayTransaction | null
+  }
+
+  const results: SuggestionWithDetails[] = ((data ?? []) as SuggestionRow[])
+    .filter((row) => row.amazon && row.ebay)
+    .map((row) => ({
       suggestion: {
         id: row.id,
         user_id: row.user_id,
