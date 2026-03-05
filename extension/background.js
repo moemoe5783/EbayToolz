@@ -2,24 +2,25 @@
 // Handles token refresh and the AUTO_SAVE flow so the content script
 // doesn't need to know about credentials or the API URL.
 
-importScripts('config.js')
+importScripts('config.js', 'token-crypto.js')
 
 // ── Token management ──────────────────────────────────────────────────────
 
 async function getValidToken() {
-  const { access_token, expires_at, refresh_token } =
-    await chrome.storage.local.get(['access_token', 'expires_at', 'refresh_token'])
+  const { access_token, expires_at } =
+    await chrome.storage.session.get(['access_token', 'expires_at'])
 
-  if (!access_token) return null
+  const needsRefresh = !access_token ||
+    (expires_at && Date.now() > expires_at - 5 * 60 * 1000)
 
-  // Refresh if within 5 minutes of expiry
-  if (expires_at && Date.now() > expires_at - 5 * 60 * 1000) {
-    if (!refresh_token) return null
-    const refreshed = await doRefresh(refresh_token)
-    return refreshed ? refreshed.access_token : null
-  }
+  if (!needsRefresh) return access_token
 
-  return access_token
+  const { enc_refresh_token } = await chrome.storage.local.get('enc_refresh_token')
+  const refresh_token = await decryptRefreshToken(enc_refresh_token)
+  if (!refresh_token) return null
+
+  const refreshed = await doRefresh(refresh_token)
+  return refreshed ? refreshed.access_token : null
 }
 
 async function doRefresh(refresh_token) {
@@ -33,15 +34,16 @@ async function doRefresh(refresh_token) {
       }
     )
     if (!res.ok) {
-      await chrome.storage.local.clear()
+      await clearTokens()
+      await chrome.storage.local.remove(['synced_orders', 'synced_orders_type'])
       return null
     }
     const data = await res.json()
-    await chrome.storage.local.set({
+    await storeTokens({
       access_token: data.access_token,
       refresh_token: data.refresh_token,
-      expires_at: Date.now() + data.expires_in * 1000,
-      user_email: data.user?.email ?? '',
+      expires_in: data.expires_in,
+      user_email: data.user?.email,
     })
     return data
   } catch {
@@ -154,7 +156,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true
   }
   if (message.type === 'REFRESH_TOKEN') {
-    chrome.storage.local.get(['refresh_token']).then(({ refresh_token }) => {
+    chrome.storage.local.get('enc_refresh_token').then(async ({ enc_refresh_token }) => {
+      const refresh_token = await decryptRefreshToken(enc_refresh_token)
       if (!refresh_token) { sendResponse({ success: false }); return }
       doRefresh(refresh_token).then((data) =>
         sendResponse(data ? { success: true, access_token: data.access_token } : { success: false })
