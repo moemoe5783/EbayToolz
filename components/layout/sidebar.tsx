@@ -6,6 +6,7 @@
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -43,6 +44,12 @@ interface SidebarProps {
 
 export default function Sidebar({ userEmail }: SidebarProps) {
   const pathname = usePathname()
+  const [pendingHref, setPendingHref] = useState<string | null>(null)
+
+  // Once navigation completes, pathname changes — clear the optimistic state.
+  useEffect(() => { setPendingHref(null) }, [pathname])
+
+  const activePath = pendingHref ?? pathname
 
   return (
     <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 shrink-0">
@@ -61,11 +68,12 @@ export default function Sidebar({ userEmail }: SidebarProps) {
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = item.icon
-          const isActive = pathname.startsWith(item.href)
+          const isActive = activePath.startsWith(item.href)
           return (
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => setPendingHref(item.href)}
               className={cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                 isActive

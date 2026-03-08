@@ -6,6 +6,7 @@
  */
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -23,17 +24,23 @@ const navItems = [
 
 export default function MobileNav() {
   const pathname = usePathname()
+  const [pendingHref, setPendingHref] = useState<string | null>(null)
+
+  useEffect(() => { setPendingHref(null) }, [pathname])
+
+  const activePath = pendingHref ?? pathname
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 safe-area-pb">
       <div className="flex items-stretch">
         {navItems.map((item) => {
           const Icon = item.icon
-          const isActive = pathname.startsWith(item.href)
+          const isActive = activePath.startsWith(item.href)
           return (
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => setPendingHref(item.href)}
               className={cn(
                 'flex-1 flex flex-col items-center justify-center gap-1 py-2.5 px-1 transition-colors min-h-[56px]',
                 isActive
