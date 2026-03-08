@@ -215,11 +215,6 @@ export async function generateMatchSuggestions(): Promise<{
     }
   }
 
-  if (autoLinked > 0) {
-    revalidatePath('/clusters')
-    revalidatePath('/transactions')
-  }
-
   return { autoLinked, suggested }
 }
 

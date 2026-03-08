@@ -90,9 +90,24 @@ export async function getValidEbayAccessToken(userId: string): Promise<string | 
     return null // User must reconnect
   }
 
-  // Attempt refresh
+  // Attempt refresh.
+  // eBay's refresh response does NOT include a new refresh_token — the same
+  // token remains valid. We must carry the original one forward; otherwise
+  // storeEbayTokens would encrypt `undefined`, corrupting the stored token
+  // and breaking every subsequent refresh.
   try {
     const refreshed = await refreshAccessToken(tokens.refreshToken)
+    if (!refreshed.refresh_token) {
+      refreshed.refresh_token = tokens.refreshToken
+    }
+    // If eBay doesn't return a new expiry for the refresh token, preserve the
+    // original so we don't accidentally reset it to null.
+    if (!refreshed.refresh_token_expires_in && tokens.refreshTokenExpiresAt) {
+      const msRemaining = tokens.refreshTokenExpiresAt.getTime() - Date.now()
+      if (msRemaining > 0) {
+        refreshed.refresh_token_expires_in = Math.floor(msRemaining / 1000)
+      }
+    }
     await storeEbayTokens(userId, refreshed)
     return refreshed.access_token
   } catch {
